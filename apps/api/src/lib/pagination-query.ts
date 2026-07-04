@@ -1,0 +1,21 @@
+import { z } from "zod";
+
+/** `?page=1&limit=25` query params — clamped to sane bounds, defaulting when absent/invalid. */
+export const PaginationQuerySchema = z.object({
+  page: z
+    .string()
+    .optional()
+    .transform((v) => Math.max(1, parseInt(v ?? "1", 10) || 1))
+    .pipe(z.number().int().min(1)),
+  limit: z
+    .string()
+    .optional()
+    .transform((v) => Math.min(100, Math.max(1, parseInt(v ?? "25", 10) || 25)))
+    .pipe(z.number().int().min(1).max(100)),
+});
+
+export type PaginationQuery = z.infer<typeof PaginationQuerySchema>;
+
+export function toOffset(page: number, limit: number): number {
+  return (page - 1) * limit;
+}

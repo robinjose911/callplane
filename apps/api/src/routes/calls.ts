@@ -1,10 +1,12 @@
 import { Router } from "express";
 import type { Queue } from "bullmq";
-import { CallRequestSchema, type CallExecutorJobData } from "@callplane/contracts";
+import { CallRequestSchema, CallStatusSchema, type CallExecutorJobData } from "@callplane/contracts";
 import type { AgentConfigRepository, CallEventRepository, CallRepository } from "@callplane/database";
 import { requireApiKey } from "../middleware/auth.js";
 import { sendErrorDefault } from "../lib/send-error.js";
 import { AgentNotFoundError, initiateCall } from "../services/call-initiation.service.js";
+import { serializeCall, serializeCallEvent } from "../lib/serialize-call.js";
+import { PaginationQuerySchema, toOffset } from "../lib/pagination-query.js";
 
 export interface CallsRouterDeps {
   agentConfigRepo: AgentConfigRepository;
@@ -52,6 +54,57 @@ export function createCallsRouter(deps: CallsRouterDeps): Router {
       }
       next(error);
     }
+  });
+
+  router.get("/v1/calls/:callSid/events", requireApiKey, async (req, res) => {
+    const callSid = req.params["callSid"] as string;
+    const call = await deps.callRepo.findBySid(callSid);
+    if (!call) {
+      sendErrorDefault(res, "NOT_FOUND", `No call found with callSid "${callSid}"`);
+      return;
+    }
+
+    const pageParsed = PaginationQuerySchema.safeParse(req.query);
+    if (!pageParsed.success) {
+      sendErrorDefault(res, "VALIDATION_ERROR", "Invalid pagination query.");
+      return;
+    }
+
+    const { page, limit } = pageParsed.data;
+    const events = await deps.callEventRepo.findBySid(call.callSid, { limit, offset: toOffset(page, limit) });
+    res.json({ events: events.map(serializeCallEvent), page, limit });
+  });
+
+  router.get("/v1/calls/:callSid", requireApiKey, async (req, res) => {
+    const callSid = req.params["callSid"] as string;
+    const call = await deps.callRepo.findBySid(callSid);
+    if (!call) {
+      sendErrorDefault(res, "NOT_FOUND", `No call found with callSid "${callSid}"`);
+      return;
+    }
+    res.json(serializeCall(call));
+  });
+
+  router.get("/v1/calls", requireApiKey, async (req, res) => {
+    const pageParsed = PaginationQuerySchema.safeParse(req.query);
+    if (!pageParsed.success) {
+      sendErrorDefault(res, "VALIDATION_ERROR", "Invalid pagination query.");
+      return;
+    }
+
+    const statusParsed = req.query["status"] !== undefined ? CallStatusSchema.safeParse(req.query["status"]) : undefined;
+    if (statusParsed && !statusParsed.success) {
+      sendErrorDefault(res, "VALIDATION_ERROR", "Invalid status filter.");
+      return;
+    }
+
+    const { page, limit } = pageParsed.data;
+    const calls = await deps.callRepo.list({
+      ...(statusParsed?.data !== undefined ? { status: statusParsed.data } : {}),
+      limit,
+      offset: toOffset(page, limit),
+    });
+    res.json({ calls: calls.map(serializeCall), page, limit });
   });
 
   return router;

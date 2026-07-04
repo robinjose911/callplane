@@ -19,11 +19,12 @@ export function createCallEventRepository(prisma: PrismaClient) {
       });
     },
 
-    /** All events for a call, in chronological order. */
-    async findBySid(callSid: string): Promise<CallEvent[]> {
+    /** Events for a call, in chronological (append) order. Returns all when no page is given. */
+    async findBySid(callSid: string, page?: { limit: number; offset: number }): Promise<CallEvent[]> {
       return prisma.callEvent.findMany({
         where: { callSid },
         orderBy: { createdAt: "asc" },
+        ...(page !== undefined ? { take: page.limit, skip: page.offset } : {}),
       });
     },
   };
