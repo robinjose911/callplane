@@ -94,9 +94,8 @@ the same code, not two implementations that drift apart. See
 
 Every stage of this build is verified by automation — no manual click-through required to prove a
 feature works. Real Postgres, real Redis, a real local LiveKit server; only the AI provider SDKs
-and the SIP dialer are stubbed. See the "Testing Philosophy" section of
-[`CLAUDE.md`](./CLAUDE.md) for the full convention, and [`PLAN.md`](./PLAN.md) for the stage-by-
-stage build log (every stage: what shipped, what was tested, what was found in code review).
+and the SIP dialer are stubbed. See [`PLAN.md`](./PLAN.md) for the stage-by-stage build log (every
+stage: what shipped, what was tested, what was found in code review).
 
 ## Docs
 

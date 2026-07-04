@@ -1,7 +1,10 @@
 #!/usr/bin/env node
-// Scans README.md, CONTRIBUTING.md, MAINTENANCE.md, CLAUDE.md, and every docs/*.md file for local
-// markdown links (relative file paths, not external URLs or bare anchors) and fails if any target
-// doesn't exist on disk.
+// Scans README.md, CONTRIBUTING.md, MAINTENANCE.md, and every docs/*.md file for local markdown
+// links (relative file paths, not external URLs or bare anchors) and fails if any target doesn't
+// exist on disk. CLAUDE.md is deliberately excluded — it's gitignored (private, not part of the
+// public repo), so it must never be linked to from a public doc, and scanning it here would only
+// mask that class of mistake locally (it exists on this machine) while CI (a clean checkout that
+// never has it) would still fail.
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -10,9 +13,7 @@ import { findBrokenLinks } from "./lib/check-links-core.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function collectMarkdownFiles() {
-  const files = ["README.md", "CONTRIBUTING.md", "MAINTENANCE.md", "CLAUDE.md"].filter((f) =>
-    existsSync(join(repoRoot, f)),
-  );
+  const files = ["README.md", "CONTRIBUTING.md", "MAINTENANCE.md"].filter((f) => existsSync(join(repoRoot, f)));
   const docsDir = join(repoRoot, "docs");
   if (existsSync(docsDir)) {
     for (const entry of readdirSync(docsDir, { recursive: true })) {
