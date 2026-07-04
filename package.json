@@ -14,8 +14,11 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "prettier --write .",
-    "test": "turbo test",
-    "clean": "turbo clean"
+    "test": "turbo test && npm run test:scripts",
+    "test:scripts": "node --test scripts/lib/*.test.mjs",
+    "clean": "turbo clean",
+    "setup": "node scripts/setup.mjs",
+    "check-links": "node scripts/check-links.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",

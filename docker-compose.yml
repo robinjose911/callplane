@@ -8,15 +8,19 @@
 # The owner's machine already runs Postgres on the default 5432 (shared with
 # another local service, isolated by schema `callplane`, not by port) — the `postgres`
 # service here is for everyone else, on host port 5433 so it never collides.
+#
+# Ports and container names are env-var-driven (with these exact defaults) so
+# scripts/fresh-clone-smoke.sh can run a second, independent stack on alternate ports/names
+# without colliding with an already-running normal dev stack on the same machine.
 
 services:
   redis:
     image: redis:7-alpine
-    container_name: callplane-redis
+    container_name: ${COMPOSE_REDIS_CONTAINER_NAME:-callplane-redis}
     restart: unless-stopped
     profiles: ["full"]
     ports:
-      - "6379:6379"
+      - "${COMPOSE_REDIS_PORT:-6379}:6379"
     volumes:
       - callplane_redis_data:/data
     command: redis-server --appendonly yes
@@ -28,18 +32,18 @@ services:
 
   livekit:
     image: livekit/livekit-server:latest
-    container_name: callplane-livekit
+    container_name: ${COMPOSE_LIVEKIT_CONTAINER_NAME:-callplane-livekit}
     restart: unless-stopped
     profiles: ["full"]
     command: ["--dev", "--bind", "0.0.0.0"]
     ports:
-      - "7880:7880"
-      - "7881:7881"
-      - "50000-50100:50000-50100/udp"
+      - "${COMPOSE_LIVEKIT_PORT:-7880}:7880"
+      - "${COMPOSE_LIVEKIT_RTC_PORT:-7881}:7881"
+      - "${COMPOSE_LIVEKIT_UDP_RANGE:-50000-50100}:50000-50100/udp"
 
   postgres:
     image: pgvector/pgvector:pg17
-    container_name: callplane-postgres
+    container_name: ${COMPOSE_POSTGRES_CONTAINER_NAME:-callplane-postgres}
     restart: unless-stopped
     profiles: ["full"]
     environment:
@@ -47,7 +51,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: callplane
     ports:
-      - "5433:5432"
+      - "${COMPOSE_POSTGRES_PORT:-5433}:5432"
     volumes:
       - callplane_postgres_data:/var/lib/postgresql/data
     healthcheck:
