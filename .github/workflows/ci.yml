@@ -74,7 +74,8 @@ jobs:
         working-directory: apps/console
 
       - name: Run e2e specs (stage0..stageN regression)
-        run: npm run e2e --workspace=@callplane/console -- e2e/stage*.spec.ts
+        run: npx playwright test e2e/stage*.spec.ts
+        working-directory: apps/console
         env:
           DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/callplane?schema=callplane"
           REDIS_URL: "redis://localhost:6379"
