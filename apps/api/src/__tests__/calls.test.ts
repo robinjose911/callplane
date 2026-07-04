@@ -80,6 +80,27 @@ describe("POST /v1/calls", () => {
     );
   });
 
+  it("omits roomName/participantToken/livekitUrl for a browser call when CALL_RUNNER is not \"livekit\"", async () => {
+    const originalCallRunner = process.env["CALL_RUNNER"];
+    delete process.env["CALL_RUNNER"];
+
+    try {
+      const response = await request(appWithMockQueue())
+        .post("/v1/calls")
+        .set("Authorization", `Bearer ${API_KEY}`)
+        .send({ agentId: AGENT_CONFIG_NAMES.CASCADE, channel: "browser" });
+
+      expect(response.status).toBe(200);
+      createdCallSids.push(response.body.callSid);
+      expect(response.body).not.toHaveProperty("roomName");
+      expect(response.body).not.toHaveProperty("participantToken");
+      expect(response.body).not.toHaveProperty("livekitUrl");
+    } finally {
+      if (originalCallRunner === undefined) delete process.env["CALL_RUNNER"];
+      else process.env["CALL_RUNNER"] = originalCallRunner;
+    }
+  });
+
   it("404s for an unknown agentId", async () => {
     const response = await request(appWithMockQueue())
       .post("/v1/calls")

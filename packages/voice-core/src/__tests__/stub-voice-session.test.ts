@@ -3,11 +3,16 @@ import type { StubScenario } from "@callplane/contracts";
 
 class FakeRoom {
   isConnected = false;
+  remoteParticipants = new Map<string, { identity: string }>();
   localParticipant = {
     publishTranscription: vi.fn().mockResolvedValue(undefined),
     publishData: vi.fn().mockResolvedValue(undefined),
   };
   private handlers: Record<string, ((...args: unknown[]) => void)[]> = {};
+
+  off(event: string, handler: (...args: unknown[]) => void): void {
+    this.handlers[event] = (this.handlers[event] ?? []).filter((h) => h !== handler);
+  }
 
   on(event: string, handler: (...args: unknown[]) => void): void {
     (this.handlers[event] ??= []).push(handler);
@@ -34,7 +39,7 @@ vi.mock("@livekit/rtc-node", () => ({
     lastRoom = new FakeRoom();
     return lastRoom;
   }),
-  RoomEvent: { DataReceived: "dataReceived", Disconnected: "disconnected" },
+  RoomEvent: { DataReceived: "dataReceived", Disconnected: "disconnected", ParticipantConnected: "participantConnected" },
 }));
 
 vi.mock("livekit-server-sdk", () => ({
@@ -246,5 +251,63 @@ describe("StubVoiceSession", () => {
     await run;
 
     expect(lastRoom?.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  describe("waitForParticipantIdentity", () => {
+    it("proceeds immediately without waiting when the participant already joined before connect resolved", async () => {
+      const session = new StubVoiceSession(config());
+      const transitions: string[] = [];
+
+      const run = session.run(scenario({ turns: [{ role: "agent", text: "Hi", delayMs: 100 }] }), async (t) => {
+        if (lastRoom && transitions.length === 0) lastRoom.remoteParticipants.set("user", { identity: "user" });
+        transitions.push(t.eventType);
+      }, { waitForParticipantIdentity: "user" });
+
+      await vi.runAllTimersAsync();
+      await run;
+
+      expect(transitions).toContain("transcript_turn");
+    });
+
+    it("waits for RoomEvent.ParticipantConnected before walking turns", async () => {
+      const session = new StubVoiceSession(config());
+      let sawTurnBeforeJoin = false;
+
+      const run = session.run(scenario({ turns: [{ role: "agent", text: "Hi", delayMs: 100 }] }), async (t) => {
+        if (t.eventType === "transcript_turn" && !lastRoom?.remoteParticipants.has("user")) {
+          sawTurnBeforeJoin = true;
+        }
+      }, { waitForParticipantIdentity: "user" });
+
+      // Nobody has joined yet — the turn walk must not have started.
+      await vi.advanceTimersByTimeAsync(50);
+      expect(sawTurnBeforeJoin).toBe(false);
+
+      lastRoom?.remoteParticipants.set("user", { identity: "user" });
+      lastRoom?.emit("participantConnected", { identity: "user" });
+
+      await vi.runAllTimersAsync();
+      await run;
+
+      expect(sawTurnBeforeJoin).toBe(false);
+    });
+
+    it("proceeds anyway after the timeout elapses if nobody ever joins", async () => {
+      const session = new StubVoiceSession(config());
+      const transitions: string[] = [];
+
+      const run = session.run(
+        scenario({ turns: [{ role: "agent", text: "Hi", delayMs: 100 }] }),
+        async (t) => {
+          transitions.push(t.eventType);
+        },
+        { waitForParticipantIdentity: "user", waitForParticipantTimeoutMs: 1000 },
+      );
+
+      await vi.runAllTimersAsync();
+      await run;
+
+      expect(transitions).toContain("transcript_turn");
+    });
   });
 });

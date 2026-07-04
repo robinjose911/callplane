@@ -7,7 +7,7 @@ import {
   type CallRequest,
 } from "@callplane/contracts";
 import { isUniqueConstraintError, type AgentConfigRepository, type CallEventRepository, type CallRepository } from "@callplane/database";
-import { createChildLogger } from "@callplane/voice-core";
+import { createChildLogger, prepareBrowserCallRoom, type BrowserRoomInfo } from "@callplane/voice-core";
 
 const logger = createChildLogger({ module: "call-initiation" });
 
@@ -21,6 +21,7 @@ export class AgentNotFoundError extends Error {
 export interface InitiateCallResult {
   callSid: string;
   isIdempotent: boolean;
+  browserRoom?: BrowserRoomInfo;
 }
 
 export interface InitiateCallDeps {
@@ -104,5 +105,18 @@ export async function initiateCall(request: CallRequest, deps: InitiateCallDeps)
 
   logger.info({ callSid, agentId: request.agentId, channel: request.channel }, "Call initiated and enqueued");
 
-  return { callSid: call.callSid, isIdempotent: false };
+  // The call is already persisted and enqueued at this point — a LiveKit hiccup here must not
+  // turn into a 500 for a call that's going to run either way (the worker will still process it;
+  // for channel "browser" it'll just have nothing to join). Degrade to a roomless response
+  // instead of throwing past the point of no return.
+  let browserRoom: BrowserRoomInfo | undefined;
+  if (request.channel === "browser") {
+    try {
+      browserRoom = await prepareBrowserCallRoom(callSid);
+    } catch (err) {
+      logger.warn({ err, callSid }, "Failed to prepare the browser call's LiveKit room — returning without it");
+    }
+  }
+
+  return { callSid: call.callSid, isIdempotent: false, ...(browserRoom ? { browserRoom } : {}) };
 }

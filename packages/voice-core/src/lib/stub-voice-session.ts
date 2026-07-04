@@ -12,6 +12,8 @@ import { createChildLogger } from "./logger.js";
 const DATA_TOPIC = "callplane-events";
 const AGENT_IDENTITY = "agent";
 const TERMINAL_STATUSES: ReadonlySet<CallStatus> = new Set(["COMPLETED", "FAILED", "BUSY", "NO_ANSWER"]);
+/** See waitForParticipant's comment — a pragmatic post-join settle window before publishing. */
+const PARTICIPANT_SETTLE_DELAY_MS = 1500;
 
 export interface StubVoiceSessionConfig {
   livekitUrl: string;
@@ -52,11 +54,19 @@ export class StubVoiceSession {
    *   dial phase already walked DIALING -> RINGING -> IN_PROGRESS before this session was ever
    *   constructed — re-running `computeStubPreTurnSteps` here would try IN_PROGRESS -> DIALING
    *   again, an illegal transition. When true, skips straight to the turn-walking phase.
+   * @param opts.waitForParticipantIdentity Set by `RealCallRunner` for `channel: "browser"` calls
+   *   to the browser's own join identity ("user"). The scenario's own turn delays (e.g. 500ms for
+   *   `demo_greeting`) are far shorter than a real browser's WebRTC connect+publish time, so
+   *   without this the stub session can complete and leave the room before a human ever joins it
+   *   — Stage 6's whole "hero demo" would show an empty transcript. Waits up to
+   *   `waitForParticipantTimeoutMs` (default 8s) before proceeding regardless, so an API-only
+   *   caller that never actually joins a browser (e.g. Stage 3's existing browser-channel specs)
+   *   isn't blocked — it just gets the pre-Stage-6 behavior after the timeout elapses.
    */
   async run(
     scenario: StubScenario | undefined,
     onTransition: OnTransition,
-    opts: { alreadyInProgress?: boolean } = {},
+    opts: { alreadyInProgress?: boolean; waitForParticipantIdentity?: string; waitForParticipantTimeoutMs?: number } = {},
   ): Promise<void> {
     const room = new Room();
     this.room = room;
@@ -81,9 +91,14 @@ export class StubVoiceSession {
     });
 
     const token = await this.buildToken();
-    await room.connect(this.config.livekitUrl, token, { autoSubscribe: false, dynacast: false });
 
     try {
+      await room.connect(this.config.livekitUrl, token, { autoSubscribe: false, dynacast: false });
+
+      if (opts.waitForParticipantIdentity) {
+        await this.waitForParticipant(room, opts.waitForParticipantIdentity, opts.waitForParticipantTimeoutMs ?? 8000);
+      }
+
       const outcome = scenario?.outcome ?? "completed";
 
       if (opts.alreadyInProgress && outcome !== "completed" && outcome !== "failed") {
@@ -123,6 +138,12 @@ export class StubVoiceSession {
           if (dropped || !room.isConnected) break;
 
           await this.publishTranscript(turn.role, turn.text);
+          // LiveKit's caption/transcription API (publishTranscript above) is track-scoped — this
+          // stub never publishes an actual audio track, so a subscribing browser client can't
+          // reliably receive it that way. The already-proven-reliable data channel (used for
+          // call_ended/call_failed below) carries the same turn content redundantly, and is what
+          // the console's Playground UI (Stage 6) actually listens to build its transcript.
+          await this.publishDataEvent({ type: "transcript_turn", role: turn.role, text: turn.text });
           await onTransition({
             eventType: "transcript_turn",
             payload: { role: turn.role, text: turn.text, delayMs: turn.delayMs },
@@ -144,6 +165,38 @@ export class StubVoiceSession {
       await room.disconnect().catch((err: unknown) => {
         this.logger.warn({ err }, "Error disconnecting stub voice session from room");
       });
+    }
+  }
+
+  private async waitForParticipant(room: Room, identity: string, timeoutMs: number): Promise<void> {
+    const hasJoined = () => Array.from(room.remoteParticipants.values()).some((p) => p.identity === identity);
+
+    if (hasJoined()) {
+      // Joining a LiveKit room and having a stable data/media transport are two different
+      // moments — a participant can appear in `remoteParticipants` before its underlying
+      // connection has fully settled. A short fixed delay here is a pragmatic guard against
+      // publishing the first transcript segment into a transport that silently drops it.
+      await sleep(PARTICIPANT_SETTLE_DELAY_MS);
+      return;
+    }
+
+    const joined = await new Promise<boolean>((resolve) => {
+      const onConnect = (participant: { identity: string }): void => {
+        if (participant.identity !== identity) return;
+        clearTimeout(timer);
+        room.off(RoomEvent.ParticipantConnected, onConnect);
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        room.off(RoomEvent.ParticipantConnected, onConnect);
+        this.logger.warn({ identity, timeoutMs }, "Timed out waiting for participant to join — proceeding anyway");
+        resolve(false);
+      }, timeoutMs);
+      room.on(RoomEvent.ParticipantConnected, onConnect);
+    });
+
+    if (joined) {
+      await sleep(PARTICIPANT_SETTLE_DELAY_MS);
     }
   }
 

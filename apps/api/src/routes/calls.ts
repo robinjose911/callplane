@@ -52,7 +52,11 @@ export function createCallsRouter(deps: CallsRouterDeps): Router {
         callEventRepo: deps.callEventRepo,
         callExecutorQueue: deps.getCallExecutorQueue(),
       });
-      res.status(200).json({ callSid: result.callSid, status: "QUEUED" });
+      res.status(200).json({
+        callSid: result.callSid,
+        status: "QUEUED",
+        ...(result.browserRoom ? result.browserRoom : {}),
+      });
     } catch (error) {
       if (error instanceof AgentNotFoundError) {
         sendErrorDefault(res, "NOT_FOUND", error.message);

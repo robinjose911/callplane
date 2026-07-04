@@ -52,7 +52,10 @@ export class RealCallRunner implements CallRunner {
       }
 
       const session = new StubVoiceSession({ ...this.liveKitConfig, roomName, callSid: this.callSid });
-      await session.run(scenario, onTransition, { alreadyInProgress: this.channel === "sip" });
+      await session.run(scenario, onTransition, {
+        alreadyInProgress: this.channel === "sip",
+        ...(this.channel === "browser" ? { waitForParticipantIdentity: "user" } : {}),
+      });
     } finally {
       if (this.acquiredTrunkId !== undefined && this.sipDialDeps) {
         await this.sipDialDeps.trunkSelector.releaseTrunk(this.acquiredTrunkId).catch((err: unknown) => {

@@ -60,10 +60,20 @@ export const CallRequestSchema = z
 
 export type CallRequest = z.infer<typeof CallRequestSchema>;
 
-/** Success response body for `POST /v1/calls`. Returned immediately (API-time, pre-dial). */
+/**
+ * Success response body for `POST /v1/calls`. Returned immediately (API-time, pre-dial).
+ *
+ * `roomName`/`participantToken`/`livekitUrl` are present only for `channel: "browser"` calls, and
+ * only when `CALL_RUNNER=livekit` — the room is created and the token minted synchronously in
+ * the API request itself so the browser can join immediately, without waiting for the worker's
+ * async job to pick up the call.
+ */
 export const CallResponseSchema = z.object({
   callSid: UuidV4Schema,
   status: z.literal("QUEUED"),
+  roomName: z.string().optional(),
+  participantToken: z.string().optional(),
+  livekitUrl: z.string().optional(),
 });
 
 export type CallResponse = z.infer<typeof CallResponseSchema>;

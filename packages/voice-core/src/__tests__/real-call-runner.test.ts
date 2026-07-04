@@ -34,7 +34,7 @@ describe("RealCallRunner", () => {
       expect.objectContaining({ ...liveKitConfig, roomName: "call-1", callSid: "call-1" }),
       undefined,
       onTransition,
-      { alreadyInProgress: false },
+      { alreadyInProgress: false, waitForParticipantIdentity: "user" },
     );
     expect(roomManager.deleteRoom).toHaveBeenCalledWith("call-1");
   });

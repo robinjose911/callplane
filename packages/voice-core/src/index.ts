@@ -45,6 +45,7 @@ export {
 } from "./lib/room-manager.js";
 export { StubVoiceSession, type StubVoiceSessionConfig } from "./lib/stub-voice-session.js";
 export { RealCallRunner, type SipDialDeps } from "./lib/real-call-runner.js";
+export { prepareBrowserCallRoom, type BrowserRoomInfo } from "./lib/browser-call-room.js";
 export {
   createLiveKitSipDialer,
   SipTrunkError,
