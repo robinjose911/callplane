@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { TERMINAL_CALL_STATUSES } from "@callplane/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const TERMINAL_STATUSES = new Set<string>(TERMINAL_CALL_STATUSES);
-const TERMINAL_WEBHOOK_STATUSES = new Set(["DELIVERED", "DEAD"]);
-const POLL_INTERVAL_MS = 1000;
 
 interface CallResponse {
   callSid: string;
@@ -83,68 +81,57 @@ export function CallDetailClient({
   const [hasRecording, setHasRecording] = useState(initialHasRecording);
   const [replayingId, setReplayingId] = useState<string | undefined>(undefined);
   const callSid = initialCall.callSid;
-  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
-  const callIsTerminal = TERMINAL_STATUSES.has(call.status);
-  // An empty array is vacuously "every entry is terminal" — that's wrong here: a call can go
-  // terminal before its webhook outbox rows exist yet (enqueueWebhooksForCall runs in the
-  // call-executor's finally block, strictly after the status write). Only treat deliveries as
-  // settled once there's at least one to look at.
-  const deliveriesAreTerminal =
-    webhookDeliveries.length > 0 && webhookDeliveries.every((d) => TERMINAL_WEBHOOK_STATUSES.has(d.status));
-  // Bounds how long we'll keep polling a terminal call with zero delivery rows — otherwise a call
-  // with no subscribed webhook endpoints at all would poll forever, since deliveriesAreTerminal
-  // can never become true for a call that will never get any outbox rows.
-  const noDeliveriesGraceTicksRef = useRef(0);
+  const initialCallIsTerminal = TERMINAL_STATUSES.has(initialCall.status);
+  // Bumped by handleReplay to force the stream effect below to reopen a connection even if it had
+  // already closed — a manual replay can un-settle a previously-terminal call (a DELIVERED/DEAD
+  // row goes back to PENDING), and unlike the old polling loop's dependency-array re-run, an SSE
+  // effect keyed only on mount-time state has no other way to notice that.
+  const [reconnectNonce, setReconnectNonce] = useState(0);
 
+  // ADR 0004: SSE, not polling — the API's GET /v1/calls/:sid/stream route pushes a combined
+  // snapshot (call/events/costs/webhookDeliveries/hasRecording) every ~1s server-side, deciding
+  // itself when the call is "done" (terminal AND webhook deliveries settled or grace-period
+  // exhausted — see call-stream-snapshot.ts, which carries forward the exact vacuous-truth and
+  // grace-period lessons this file's polling loop used to encode here directly).
   useEffect(() => {
-    if (callIsTerminal && deliveriesAreTerminal) return;
-    if (callIsTerminal && webhookDeliveries.length === 0 && noDeliveriesGraceTicksRef.current >= 10) return;
+    // Only the initial mount skips opening a stream for an already-settled call — any later
+    // reconnect (triggered by a replay) always opens one, since the whole point is to pick up
+    // state that's no longer settled.
+    if (reconnectNonce === 0 && initialCallIsTerminal) return;
 
-    let pollInFlight = false;
+    const source = new EventSource(`/api/calls/${callSid}/stream`);
 
-    async function poll() {
-      // Guards against a slow response still being in flight when the next tick fires — without
-      // this, two overlapping polls' responses can resolve out of order and an older one
-      // arriving last would silently regress the just-rendered (newer) state.
-      if (pollInFlight) return;
-      pollInFlight = true;
-      try {
-        const [callRes, eventsRes, webhooksRes, costsRes, recordingRes] = await Promise.all([
-          fetch(`/api/calls/${callSid}`),
-          fetch(`/api/calls/${callSid}/events?limit=100`),
-          fetch(`/api/webhook-outbox?callSid=${callSid}`),
-          fetch(`/api/calls/${callSid}/cost`),
-          hasRecording ? Promise.resolve(undefined) : fetch(`/api/calls/${callSid}/recording`, { method: "HEAD" }),
-        ]);
-        if (callRes.ok) setCall(await callRes.json());
-        if (eventsRes.ok) setEvents((await eventsRes.json()).events);
-        if (costsRes.ok) setCosts((await costsRes.json()).costs);
-        if (recordingRes?.ok) setHasRecording(true);
-        if (webhooksRes.ok) {
-          const { entries } = (await webhooksRes.json()) as { entries: WebhookOutboxEntryResponse[] };
-          setWebhookDeliveries(entries);
-          noDeliveriesGraceTicksRef.current = entries.length === 0 ? noDeliveriesGraceTicksRef.current + 1 : 0;
+    source.onmessage = (event) => {
+      const snapshot = JSON.parse(event.data) as {
+        call: CallResponse;
+        events: CallEventResponse[];
+        costs: CallCostResponse[];
+        webhookDeliveries: WebhookOutboxEntryResponse[];
+        hasRecording: boolean;
+        final: boolean;
+      };
+      setCall(snapshot.call);
+      setEvents(snapshot.events);
+      setCosts(snapshot.costs);
+      setWebhookDeliveries(snapshot.webhookDeliveries);
+      setHasRecording(snapshot.hasRecording);
 
-          // A running interval keeps firing on its own schedule regardless of what a *future*
-          // effect re-run would decide — re-checking the grace condition only in the effect body
-          // would never actually stop this already-armed interval, since callIsTerminal and
-          // deliveries-empty can both stay constant forever. Self-terminate here instead.
-          if (callIsTerminal && entries.length === 0 && noDeliveriesGraceTicksRef.current >= 10) {
-            clearInterval(intervalRef.current);
-          }
-        }
-      } catch {
-        // A transient network error shouldn't crash the poller — just skip this tick and retry
-        // on the next one rather than throwing an unhandled rejection every second.
-      } finally {
-        pollInFlight = false;
+      // The browser's native EventSource always tries to reconnect after ANY connection close,
+      // including the server's own clean res.end() once it's decided the call is fully settled —
+      // there's no "this is done" signal in the SSE spec itself. Without closing explicitly here,
+      // the client would silently reopen a new connection every ~3s forever after every call.
+      if (snapshot.final) {
+        source.close();
       }
-    }
+    };
 
-    intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
-    return () => clearInterval(intervalRef.current);
-  }, [callSid, callIsTerminal, deliveriesAreTerminal, webhookDeliveries.length, hasRecording]);
+    // A transient network hiccup fires onerror too; EventSource's default auto-reconnect handles
+    // that case on its own, so there's nothing to do here beyond not crashing the app.
+    source.onerror = () => {};
+
+    return () => source.close();
+  }, [callSid, initialCallIsTerminal, reconnectNonce]);
 
   async function handleReplay(id: string) {
     setReplayingId(id);
@@ -153,6 +140,7 @@ export function CallDetailClient({
       if (response.ok) {
         const updated = await response.json();
         setWebhookDeliveries((prev) => prev.map((d) => (d.id === id ? updated : d)));
+        setReconnectNonce((n) => n + 1);
       }
     } finally {
       setReplayingId(undefined);

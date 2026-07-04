@@ -229,13 +229,20 @@ export const UpdateWebhookEndpointBodySchema = CreateWebhookEndpointBodySchema.o
 
 export type UpdateWebhookEndpointBody = z.infer<typeof UpdateWebhookEndpointBodySchema>;
 
+export const WebhookOutboxStatusSchema = z.enum(["PENDING", "DELIVERED", "RETRY_PENDING", "FAILED", "DEAD"]);
+export type WebhookOutboxStatus = z.infer<typeof WebhookOutboxStatusSchema>;
+
+/** A delivery is done being retried once it lands here — shared by the API's SSE stream and the
+ * console's polling/rendering so both sides agree on what "settled" means. */
+export const TERMINAL_WEBHOOK_OUTBOX_STATUSES: readonly WebhookOutboxStatus[] = ["DELIVERED", "DEAD"];
+
 /** A single webhook delivery-attempt row — the console's delivery log / replay UI. */
 export const WebhookOutboxEntrySchema = z.object({
   id: z.string(),
   callSid: z.string(),
   webhookEndpointId: z.string(),
   eventType: WebhookEventTypeSchema,
-  status: z.enum(["PENDING", "DELIVERED", "RETRY_PENDING", "FAILED", "DEAD"]),
+  status: WebhookOutboxStatusSchema,
   retryCount: z.number().int().min(0),
   maxRetries: z.number().int().positive(),
   nextRetryAt: z.string().nullable(),

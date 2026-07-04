@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted for v1. Revisit post-v1 (tracked in `PLAN.md`'s Stage 11 section).
+Accepted for v1. **Superseded post-v1** — Stage 11.1 (see `PLAN.md`) replaced the polling described
+below with a single Server-Sent Events connection (`GET /v1/calls/:callSid/stream`), exactly as
+anticipated in the Consequences section. This ADR is kept as-is (not rewritten) because it
+accurately documents *why v1 shipped with polling* — that reasoning doesn't stop being true just
+because the implementation later changed once the "if this stack were extended" condition below
+was revisited.
 
 ## Context
 

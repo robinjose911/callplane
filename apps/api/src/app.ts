@@ -81,6 +81,7 @@ export function createApp(overrides?: CreateAppOverrides): Express {
       callRepo: overrides?.callRepo ?? createCallRepository(prisma),
       callEventRepo: overrides?.callEventRepo ?? createCallEventRepository(prisma),
       callCostRepo: createCallCostRepository(prisma),
+      webhookOutboxRepo: createWebhookOutboxRepository(prisma),
       recordingRepo: createRecordingRepository(prisma),
       storageAdapter: overrides?.storageAdapter ?? getDefaultStorageAdapter(),
       getCallExecutorQueue: () => overrides?.callExecutorQueue ?? getDefaultCallExecutorQueue(),
