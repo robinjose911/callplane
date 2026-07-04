@@ -1,0 +1,21 @@
+{
+  "name": "callplane",
+  "version": "0.0.1",
+  "private": true,
+  "description": "A production-grade AI voice agent control plane — three voice modes, multi-provider failover, SIP telephony, reliable webhooks, cost metering, and a self-service admin console.",
+  "license": "MIT",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "packageManager": "npm@10.9.2"
+}
