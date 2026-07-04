@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 4400",
+    "dev": "next dev -p ${PORT:-4400}",
     "build": "next build",
-    "start": "next start -p 4400",
+    "start": "next start -p ${PORT:-4400}",
     "lint": "eslint",
     "test": "vitest run",
     "e2e": "playwright test",

@@ -66,6 +66,11 @@ jobs:
             livekit/livekit-server --dev --bind 0.0.0.0
           for i in $(seq 1 30); do
             curl -sf http://localhost:7880 >/dev/null 2>&1 && break
+            if [ "$i" -eq 30 ]; then
+              echo "::error::LiveKit dev server did not become ready in 30s"
+              docker logs livekit-dev
+              exit 1
+            fi
             sleep 1
           done
 
@@ -74,7 +79,7 @@ jobs:
         working-directory: apps/console
 
       - name: Run e2e specs (stage0..stageN regression)
-        run: npx playwright test e2e/stage*.spec.ts
+        run: npx playwright test
         working-directory: apps/console
         env:
           DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/callplane?schema=callplane"

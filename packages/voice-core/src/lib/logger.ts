@@ -62,9 +62,6 @@ function buildLogger(): pino.Logger {
 
 export const logger = buildLogger();
 
-/** Log file path used by agent child processes — exported for startup banners. */
-export const agentLogFile = isChildProcess ? AGENT_LOG_FILE : undefined;
-
 /** Resolved agent log file path — always defined regardless of process context. */
 export const AGENT_LOG_FILE_PATH = AGENT_LOG_FILE;
 

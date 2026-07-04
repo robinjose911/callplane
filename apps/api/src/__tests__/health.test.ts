@@ -3,7 +3,7 @@ import request from "supertest";
 import { createApp } from "../app.js";
 
 describe("GET /health", () => {
-  it("returns ok status with service name and stub-mode flag", async () => {
+  it("returns ok status with service name and all stub-mode flags", async () => {
     const app = createApp();
 
     const response = await request(app).get("/health");
@@ -13,6 +13,8 @@ describe("GET /health", () => {
       ok: true,
       service: expect.any(String),
       stubMode: expect.any(Boolean),
+      sipStubMode: expect.any(Boolean),
+      recordingMode: expect.any(String),
     });
   });
 
