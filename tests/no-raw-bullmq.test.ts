@@ -15,7 +15,17 @@ function grepRawConstructors(): string[] {
   try {
     output = execFileSync(
       "grep",
-      ["-rnE", "new (Queue|Worker)\\(", "--include=*.ts", "apps", "packages"],
+      [
+        "-rnE",
+        "new (Queue|Worker)\\(",
+        "--include=*.ts",
+        "--exclude=*.d.ts",
+        "--exclude-dir=dist",
+        "--exclude-dir=.turbo",
+        "--exclude-dir=node_modules",
+        "apps",
+        "packages",
+      ],
       { cwd: root, encoding: "utf-8" },
     );
   } catch (error) {

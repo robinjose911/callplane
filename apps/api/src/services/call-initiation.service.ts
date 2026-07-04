@@ -6,7 +6,7 @@ import {
   type CallExecutorJobData,
   type CallRequest,
 } from "@callplane/contracts";
-import type { AgentConfigRepository, CallEventRepository, CallRepository } from "@callplane/database";
+import { isUniqueConstraintError, type AgentConfigRepository, type CallEventRepository, type CallRepository } from "@callplane/database";
 import { createChildLogger } from "@callplane/voice-core";
 
 const logger = createChildLogger({ module: "call-initiation" });
@@ -23,19 +23,21 @@ export interface InitiateCallResult {
   isIdempotent: boolean;
 }
 
+export interface InitiateCallDeps {
+  agentConfigRepo: AgentConfigRepository;
+  callRepo: CallRepository;
+  callEventRepo: CallEventRepository;
+  callExecutorQueue: Queue<CallExecutorJobData>;
+}
+
 /**
  * Core business logic for `POST /v1/calls`. Idempotency is enforced via a unique DB column
  * (`Call.idempotencyKey`), not Redis — matching the source project's actual implementation (the plan text says
  * "via Redis" but the source project's own call-initiation.service.ts uses a Postgres unique constraint; ported
  * the real behavior, not the plan's paraphrase).
  */
-export async function initiateCall(
-  request: CallRequest,
-  agentConfigRepo: AgentConfigRepository,
-  callRepo: CallRepository,
-  callEventRepo: CallEventRepository,
-  callExecutorQueue: Queue<CallExecutorJobData>,
-): Promise<InitiateCallResult> {
+export async function initiateCall(request: CallRequest, deps: InitiateCallDeps): Promise<InitiateCallResult> {
+  const { agentConfigRepo, callRepo, callEventRepo, callExecutorQueue } = deps;
   const agentConfig = await agentConfigRepo.findByName(request.agentId);
   if (!agentConfig) {
     throw new AgentNotFoundError(request.agentId);
@@ -59,15 +61,31 @@ export async function initiateCall(
 
   const callSid = randomUUID();
 
-  const call = await callRepo.create({
-    callSid,
-    agentId: request.agentId,
-    channel: request.channel,
-    ...(request.toNumber !== undefined ? { toNumber: request.toNumber } : {}),
-    ...(request.scenario !== undefined ? { scenario: request.scenario } : {}),
-    ...(request.dynamicVariables !== undefined ? { dynamicVariables: request.dynamicVariables } : {}),
-    ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
-  });
+  let call;
+  try {
+    call = await callRepo.create({
+      callSid,
+      agentId: request.agentId,
+      channel: request.channel,
+      ...(request.toNumber !== undefined ? { toNumber: request.toNumber } : {}),
+      ...(request.scenario !== undefined ? { scenario: request.scenario } : {}),
+      ...(request.dynamicVariables !== undefined ? { dynamicVariables: request.dynamicVariables } : {}),
+      ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+    });
+  } catch (error) {
+    // A concurrent request racing on the same idempotencyKey can both pass the
+    // findActiveByIdempotencyKey check above before either has committed — the DB unique
+    // constraint lets one insert win and rejects the other with P2002. Return the winner's
+    // callSid instead of surfacing a 500 for what is, from the client's perspective, a duplicate.
+    if (idempotencyKey !== undefined && isUniqueConstraintError(error)) {
+      const winner = await callRepo.findActiveByIdempotencyKey(idempotencyKey);
+      if (winner) {
+        logger.info({ callSid: winner.callSid }, "Idempotent request — concurrent duplicate resolved via unique constraint");
+        return { callSid: winner.callSid, isIdempotent: true };
+      }
+    }
+    throw error;
+  }
 
   await callEventRepo.append({ callSid, eventType: "call_queued" });
 

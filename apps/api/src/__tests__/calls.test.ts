@@ -139,4 +139,30 @@ describe("POST /v1/calls", () => {
 
     expect(mockQueue.add).toHaveBeenCalledTimes(1);
   });
+
+  it("two truly concurrent requests with the same agentId+toNumber both 200 with the same callSid", async () => {
+    const agentConfigRepo = createAgentConfigRepository(prisma);
+    await agentConfigRepo.upsertByName(AGENT_CONFIG_NAMES.CASCADE, {
+      name: AGENT_CONFIG_NAMES.CASCADE,
+      voiceMode: "cascade",
+      prompt: "test",
+    });
+
+    const body = { agentId: AGENT_CONFIG_NAMES.CASCADE, channel: "sip" as const, toNumber: "+15550009999" };
+
+    // Fired in parallel (not awaited sequentially) so both requests pass the
+    // findActiveByIdempotencyKey check before either has committed its INSERT — this is the
+    // race the P2002 catch-and-recover path in initiateCall() exists to handle.
+    const [first, second] = await Promise.all([
+      request(appWithMockQueue()).post("/v1/calls").set("Authorization", `Bearer ${API_KEY}`).send(body),
+      request(appWithMockQueue()).post("/v1/calls").set("Authorization", `Bearer ${API_KEY}`).send(body),
+    ]);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(first.body.callSid).toBe(second.body.callSid);
+    createdCallSids.push(first.body.callSid);
+
+    expect(mockQueue.add).toHaveBeenCalledTimes(1);
+  });
 });
