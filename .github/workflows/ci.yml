@@ -57,6 +57,7 @@ jobs:
           node-version: "22"
           cache: "npm"
       - run: npm ci
+      - run: npx turbo build
 
       - name: Start local LiveKit dev server
         run: |
