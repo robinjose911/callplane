@@ -15,9 +15,11 @@
     "test": "vitest run",
     "clean": "rm -rf dist .turbo",
     "generate": "prisma generate",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "db:seed": "tsx src/seed.ts"
   },
   "dependencies": {
+    "@callplane/contracts": "*",
     "@prisma/client": "^6.19.3",
     "prisma": "^6.19.3"
   },

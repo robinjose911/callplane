@@ -138,3 +138,15 @@ export {
   WebhookEventType,
   WebhookDeliveryStatus,
 } from "@prisma/client";
+
+// ─── Seed fixtures ──────────────────────────────────────────────────────────────
+// Single source of truth for fixture names/ids — specs import these constants rather than
+// hardcoding strings, so a rename here can't silently desync a spec.
+
+export { AGENT_CONFIG_NAMES, AGENT_CONFIG_FIXTURES } from "./fixtures/agent-configs.js";
+export { SIP_TRUNK_NAMES, SIP_TRUNK_FIXTURES } from "./fixtures/sip-trunks.js";
+export { LANGUAGE_PROFILE_FIXTURES } from "./fixtures/language-profiles.js";
+export { WEBHOOK_ENDPOINT_NAMES, WEBHOOK_ENDPOINT_FIXTURES } from "./fixtures/webhook-endpoint.js";
+export { PRICE_TABLE_FIXTURES } from "./fixtures/price-table.js";
+export { STUB_SCENARIO_NAMES, STUB_SCENARIOS } from "./fixtures/stub-scenarios.js";
+export { seed } from "./seed.js";
