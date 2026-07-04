@@ -1,0 +1,61 @@
+# Local development infrastructure ONLY — no app services here, run those with `turbo dev`.
+#
+# The `full` profile is the one-command public quickstart:
+#   docker compose --profile full up -d
+#   docker compose --profile full down
+#   docker compose --profile full down -v   # reset all data
+#
+# The owner's machine already runs Postgres on the default 5432 (shared with
+# another local service, isolated by schema `callplane`, not by port) — the `postgres`
+# service here is for everyone else, on host port 5433 so it never collides.
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: callplane-redis
+    restart: unless-stopped
+    profiles: ["full"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - callplane_redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: callplane-livekit
+    restart: unless-stopped
+    profiles: ["full"]
+    command: ["--dev", "--bind", "0.0.0.0"]
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: callplane-postgres
+    restart: unless-stopped
+    profiles: ["full"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: callplane
+    ports:
+      - "5433:5432"
+    volumes:
+      - callplane_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  callplane_redis_data:
+  callplane_postgres_data:
