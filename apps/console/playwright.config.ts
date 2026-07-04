@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const isCI = !!process.env["CI"];
 
+const CONSOLE_USER = "admin";
+const CONSOLE_PASSWORD = "e2e-console-password";
+
 const stubEnv = {
   PROVIDER_STUB_MODE: "true",
   SIP_STUB_MODE: "true",
@@ -19,6 +22,10 @@ const stubEnv = {
   DATABASE_URL:
     process.env["DATABASE_URL"] ??
     "postgresql://postgres:postgres@localhost:5433/callplane?schema=callplane",
+  // Stage 5: console auth — globalSetup logs in once and saves storageState for every spec.
+  CONSOLE_USER,
+  CONSOLE_PASSWORD,
+  SESSION_SECRET: "e2e-session-secret-at-least-32-characters-long",
 };
 
 export default defineConfig({
@@ -27,9 +34,11 @@ export default defineConfig({
   workers: 1,
   retries: isCI ? 1 : 0,
   reporter: isCI ? [["github"], ["html", { open: "never" }]] : "list",
+  globalSetup: "./e2e/global-setup.ts",
   use: {
     baseURL: "http://localhost:4400",
     trace: "retain-on-failure",
+    storageState: "./e2e/.auth/user.json",
   },
   projects: [
     {
