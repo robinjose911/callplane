@@ -12,3 +12,25 @@ export {
   type LanguageContext,
   type LanguageProfileLoader,
 } from "./lib/language-profile-loader.js";
+export {
+  createDeepgramStt,
+  createGeminiLlm,
+  createAzureLlm,
+  createElevenLabsTts,
+  createCartesiaTts,
+} from "./lib/pipeline-agent.js";
+export {
+  isAzureConfigured,
+  createGeminiRealtimeModel,
+  createOpenAIRealtimeModel,
+  createAzureRealtimeModel,
+} from "./lib/realtime-agent.js";
+export {
+  buildCascadeSession,
+  buildRealtimeSession,
+  buildHalfCascadeSession,
+  buildSessionFromMode,
+  type AgentSessionPair,
+  type SessionBuildParams,
+} from "./lib/session-builders.js";
+export { resolveVoiceSession } from "./lib/resolve-voice-session.js";
