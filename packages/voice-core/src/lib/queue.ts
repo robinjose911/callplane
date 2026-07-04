@@ -20,6 +20,11 @@ function getConnection(): Redis {
   return sharedConnection;
 }
 
+/** The same shared ioredis connection BullMQ uses — for non-queue Redis usage (e.g. trunk slot accounting) that shouldn't open a second connection. */
+export function getSharedRedisConnection(): Redis {
+  return getConnection();
+}
+
 export function createQueue<DataType, ResultType = unknown, NameType extends string = string>(
   name: string,
 ): Queue<DataType, ResultType, NameType> {

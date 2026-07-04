@@ -2,7 +2,7 @@ export { logger, createChildLogger, flushLogger, AGENT_LOG_FILE_PATH } from "./l
 export type { Logger } from "./lib/logger.js";
 export { buildHealthPayload } from "./lib/health.js";
 export type { HealthPayload } from "./lib/health.js";
-export { createQueue, createWorker, QUEUE_PREFIX } from "./lib/queue.js";
+export { createQueue, createWorker, QUEUE_PREFIX, getSharedRedisConnection } from "./lib/queue.js";
 export type { CallRunner, CallTransition, OnTransition } from "./lib/call-runner.js";
 export { StubCallRunner } from "./lib/stub-call-runner.js";
 export { resolveTemplate } from "./lib/template-resolver.js";
@@ -45,3 +45,11 @@ export {
 } from "./lib/room-manager.js";
 export { StubVoiceSession, type StubVoiceSessionConfig } from "./lib/stub-voice-session.js";
 export { RealCallRunner } from "./lib/real-call-runner.js";
+export {
+  createSipTrunkSelector,
+  TRUNK_SLOT_TTL_SECONDS,
+  type SipTrunkSelector,
+  type SipTrunkData,
+  type SelectedTrunk,
+  type TrunkRedisClient,
+} from "./lib/trunk-selector.js";
