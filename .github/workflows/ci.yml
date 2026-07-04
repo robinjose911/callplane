@@ -34,6 +34,11 @@ jobs:
           node-version: "22"
           cache: "npm"
       - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: packages/database
+
       - run: npx turbo build
       - run: npx turbo lint
 
@@ -80,6 +85,11 @@ jobs:
           node-version: "22"
           cache: "npm"
       - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: packages/database
+
       - run: npx turbo build
 
       - name: Start local LiveKit dev server
