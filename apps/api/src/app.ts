@@ -1,11 +1,19 @@
 import express, { type Express } from "express";
 import type { Queue } from "bullmq";
 import type { CallExecutorJobData } from "@callplane/contracts";
-import { createAgentConfigRepository, createCallEventRepository, createCallRepository, prisma } from "@callplane/database";
+import {
+  createAgentConfigRepository,
+  createCallEventRepository,
+  createCallRepository,
+  createSipTrunkRepository,
+  prisma,
+  type SipTrunkRepository,
+} from "@callplane/database";
 import { createQueue } from "@callplane/voice-core";
 import { healthRouter } from "./routes/health.js";
 import { agentsRouter } from "./routes/agents.js";
 import { createCallsRouter, type CallsRouterDeps } from "./routes/calls.js";
+import { createTrunksRouter } from "./routes/trunks.js";
 import { errorHandler } from "./middleware/error-handler.js";
 
 export interface CreateAppOverrides {
@@ -14,6 +22,7 @@ export interface CreateAppOverrides {
   callEventRepo?: CallsRouterDeps["callEventRepo"];
   /** A resolved queue instance (e.g. a mock) — bypasses the lazy real-Redis default entirely. */
   callExecutorQueue?: Queue<CallExecutorJobData>;
+  sipTrunkRepo?: SipTrunkRepository;
 }
 
 let defaultCallExecutorQueue: Queue<CallExecutorJobData> | undefined;
@@ -41,6 +50,7 @@ export function createApp(overrides?: CreateAppOverrides): Express {
       getCallExecutorQueue: () => overrides?.callExecutorQueue ?? getDefaultCallExecutorQueue(),
     }),
   );
+  app.use(createTrunksRouter(overrides?.sipTrunkRepo ?? createSipTrunkRepository(prisma)));
   app.use(errorHandler);
   return app;
 }

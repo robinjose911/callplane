@@ -94,6 +94,25 @@ describe("createSipTrunkSelector", () => {
     expect(await selector.selectTrunk([t])).not.toBeNull(); // capacity restored
   });
 
+  it("only sets the counter's TTL on the acquire that creates the key, never refreshing it on later acquires", async () => {
+    const t = trunk({ maxConcurrentCalls: 5 });
+    acquiredTrunkIds.add(t.id);
+    const key = `callplane:trunk:${t.id}:active_calls`;
+
+    await selector.selectTrunk([t]); // creates the key — sets TTL to 1800s
+    const ttlAfterFirst = await redis.ttl(key);
+    expect(ttlAfterFirst).toBeGreaterThan(0);
+
+    // Simulate time having passed by shrinking the TTL directly.
+    await redis.expire(key, 5);
+
+    await selector.selectTrunk([t]); // second acquire on the same (already-existing) key
+    const ttlAfterSecond = await redis.ttl(key);
+
+    // If EXPIRE were re-issued on every acquire (the bug), this would jump back to ~1800.
+    expect(ttlAfterSecond).toBeLessThanOrEqual(5);
+  });
+
   it("releaseTrunk never lets the counter go negative", async () => {
     const t = trunk();
     acquiredTrunkIds.add(t.id);

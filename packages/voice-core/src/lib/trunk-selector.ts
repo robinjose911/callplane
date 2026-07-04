@@ -53,7 +53,14 @@ function trunkCounterKey(trunkId: string): string {
   return `callplane:trunk:${trunkId}:active_calls`;
 }
 
-/** Atomic INCR-if-below-max. Returns the new counter value (>= 1) on success, or -1 if at/above max. */
+/**
+ * Atomic INCR-if-below-max. Returns the new counter value (>= 1) on success, or -1 if at/above
+ * max. EXPIRE is set ONLY on the increment that creates the key (newVal == 1) — never refreshed
+ * on later acquires. If EXPIRE ran on every acquire, a leaked slot from a crashed worker (the
+ * counter stuck one higher than reality) would never actually reach its TTL on a trunk that keeps
+ * seeing new traffic, since each new call would keep pushing the expiry forward — defeating the
+ * "restores capacity automatically" safety net the TTL exists for.
+ */
 const ACQUIRE_SLOT_SCRIPT = `
 local key = KEYS[1]
 local max = tonumber(ARGV[1])
@@ -61,7 +68,9 @@ local ttl = tonumber(ARGV[2])
 local current = tonumber(redis.call('GET', key) or '0')
 if current < max then
   local newVal = redis.call('INCR', key)
-  redis.call('EXPIRE', key, ttl)
+  if newVal == 1 then
+    redis.call('EXPIRE', key, ttl)
+  end
   return newVal
 else
   return -1

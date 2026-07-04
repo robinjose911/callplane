@@ -47,7 +47,17 @@ export class StubVoiceSession {
     this.logger = createChildLogger({ module: "stub-voice-session", callSid: config.callSid });
   }
 
-  async run(scenario: StubScenario | undefined, onTransition: OnTransition): Promise<void> {
+  /**
+   * @param opts.alreadyInProgress Set by `RealCallRunner` for `channel: "sip"` calls whose SIP
+   *   dial phase already walked DIALING -> RINGING -> IN_PROGRESS before this session was ever
+   *   constructed — re-running `computeStubPreTurnSteps` here would try IN_PROGRESS -> DIALING
+   *   again, an illegal transition. When true, skips straight to the turn-walking phase.
+   */
+  async run(
+    scenario: StubScenario | undefined,
+    onTransition: OnTransition,
+    opts: { alreadyInProgress?: boolean } = {},
+  ): Promise<void> {
     const room = new Room();
     this.room = room;
 
@@ -75,7 +85,23 @@ export class StubVoiceSession {
 
     try {
       const outcome = scenario?.outcome ?? "completed";
-      const { steps, walkTurns } = computeStubPreTurnSteps(outcome);
+
+      if (opts.alreadyInProgress && outcome !== "completed" && outcome !== "failed") {
+        // Pre-connection outcomes (busy/no_answer/trunk_failure) don't apply once a SIP dial has
+        // already answered — CALL_STATUS_TRANSITIONS only allows IN_PROGRESS -> COMPLETED/FAILED/
+        // CALL_DROPPED anyway, so this can only ever resolve to FAILED (computeStubFinalStep's own
+        // fallback). Logged because a scenario fixture combined with an already-answered SIP call
+        // is a misconfiguration — the scenario's own outcome should be "completed"/"failed" for
+        // sip-channel calls; busy/no_answer/trunk_failure are meant to come from the SIP dialer.
+        this.logger.warn(
+          { scenarioOutcome: outcome },
+          "Scenario outcome is a pre-connection outcome but the call is already IN_PROGRESS — treating as failed",
+        );
+      }
+
+      const { steps, walkTurns } = opts.alreadyInProgress
+        ? { steps: [], walkTurns: true }
+        : computeStubPreTurnSteps(outcome);
 
       for (const step of steps) {
         await this.applyStep(step, outcome, onTransition);

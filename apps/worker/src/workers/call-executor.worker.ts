@@ -4,55 +4,21 @@ import {
   type CallExecutorJobData,
   type CallStatus,
 } from "@callplane/contracts";
-import { createCallEventRepository, createCallRepository, prisma, STUB_SCENARIOS } from "@callplane/database";
+import { createCallEventRepository, createCallRepository, createSipTrunkRepository, prisma, STUB_SCENARIOS } from "@callplane/database";
 import type { Worker } from "bullmq";
-import {
-  createChildLogger,
-  createWorker,
-  createLiveKitRoomManager,
-  StubCallRunner,
-  RealCallRunner,
-  type CallRunner,
-} from "@callplane/voice-core";
+import { createChildLogger, createWorker, buildCallRunner, type CallRunner } from "@callplane/voice-core";
 
 const logger = createChildLogger({ worker: "callExecutor" });
 
 const callRepo = createCallRepository(prisma);
 const callEventRepo = createCallEventRepository(prisma);
+const sipTrunkRepo = createSipTrunkRepository(prisma);
 
 export class IllegalTransitionError extends Error {
   constructor(from: CallStatus, to: CallStatus) {
     super(`Illegal call status transition: ${from} -> ${to}`);
     this.name = "IllegalTransitionError";
   }
-}
-
-/**
- * CALL_RUNNER=livekit routes through a real LiveKit room; anything else (default) stays
- * in-process. RealCallRunner only ever drives StubVoiceSession today (see its own doc comment) —
- * it has no real (non-stub) provider session wiring yet. Requiring PROVIDER_STUB_MODE=true
- * alongside CALL_RUNNER=livekit makes that limitation fail loudly instead of an operator
- * expecting real provider calls silently getting the scripted stub conversation instead.
- */
-function buildDefaultRunner(callSid: string): CallRunner {
-  if (process.env["CALL_RUNNER"] !== "livekit") {
-    return new StubCallRunner();
-  }
-
-  if (process.env["PROVIDER_STUB_MODE"] !== "true") {
-    throw new Error(
-      "CALL_RUNNER=livekit requires PROVIDER_STUB_MODE=true — RealCallRunner only drives " +
-        "StubVoiceSession today, it has no real (non-stub) provider session wiring yet.",
-    );
-  }
-
-  const liveKitConfig = {
-    livekitUrl: process.env["LIVEKIT_URL"] ?? "ws://localhost:7880",
-    apiKey: process.env["LIVEKIT_API_KEY"] ?? "devkey",
-    apiSecret: process.env["LIVEKIT_API_SECRET"] ?? "secret",
-  };
-  const roomManager = createLiveKitRoomManager(liveKitConfig);
-  return new RealCallRunner(callSid, roomManager, liveKitConfig);
 }
 
 /**
@@ -76,9 +42,10 @@ export async function processCallExecutorJob(
 
   let currentStatus: CallStatus = call.status;
   const scenario = data.scenario ? STUB_SCENARIOS[data.scenario] : undefined;
-  const activeRunner = runner ?? buildDefaultRunner(call.callSid);
 
   try {
+    const activeRunner = runner ?? (await buildCallRunner(data, { sipTrunkRepo }));
+
     await activeRunner.run(scenario, async (transition) => {
       await callEventRepo.append({
         callSid: call.callSid,

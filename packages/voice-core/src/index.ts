@@ -44,7 +44,16 @@ export {
   type RoomMetadata,
 } from "./lib/room-manager.js";
 export { StubVoiceSession, type StubVoiceSessionConfig } from "./lib/stub-voice-session.js";
-export { RealCallRunner } from "./lib/real-call-runner.js";
+export { RealCallRunner, type SipDialDeps } from "./lib/real-call-runner.js";
+export {
+  createLiveKitSipDialer,
+  SipTrunkError,
+  type SipDialer,
+  type SipDialParams,
+  type SipDialResult,
+  type SipDialOutcome,
+} from "./lib/sip-dialer.js";
+export { StubSipDialer } from "./lib/stub-sip-dialer.js";
 export {
   createSipTrunkSelector,
   TRUNK_SLOT_TTL_SECONDS,
@@ -53,3 +62,4 @@ export {
   type SelectedTrunk,
   type TrunkRedisClient,
 } from "./lib/trunk-selector.js";
+export { buildCallRunner, type BuildCallRunnerDeps } from "./lib/build-call-runner.js";

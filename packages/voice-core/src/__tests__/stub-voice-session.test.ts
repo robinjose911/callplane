@@ -100,6 +100,55 @@ describe("StubVoiceSession", () => {
     ]);
   });
 
+  it("with alreadyInProgress, skips DIALING/RINGING/IN_PROGRESS entirely and goes straight to turns", async () => {
+    const session = new StubVoiceSession(config());
+    const transitions: string[] = [];
+
+    const run = session.run(
+      scenario(),
+      async (t) => {
+        transitions.push(t.eventType);
+        if (t.status) transitions.push(`status:${t.status}`);
+      },
+      { alreadyInProgress: true },
+    );
+
+    await vi.runAllTimersAsync();
+    await run;
+
+    // No DIALING/RINGING/IN_PROGRESS re-emitted — a caller who already brought the call to
+    // IN_PROGRESS (e.g. RealCallRunner's SIP dial phase) would otherwise hit an illegal
+    // IN_PROGRESS -> DIALING transition.
+    expect(transitions).toEqual([
+      "transcript_turn",
+      "transcript_turn",
+      "transcript_turn",
+      "call_completed",
+      "status:COMPLETED",
+    ]);
+  });
+
+  it("with alreadyInProgress and a pre-connection scenario outcome (misconfiguration), still resolves to a legal FAILED status with the original outcome preserved", async () => {
+    const session = new StubVoiceSession(config());
+    const transitions: Array<{ eventType: string; status?: string; payload?: unknown }> = [];
+
+    const run = session.run(
+      scenario({ outcome: "busy", turns: [{ role: "agent", text: "Hello!", delayMs: 10 }] }),
+      async (t) => {
+        transitions.push({ eventType: t.eventType, ...(t.status ? { status: t.status } : {}), ...(t.payload ? { payload: t.payload } : {}) });
+      },
+      { alreadyInProgress: true },
+    );
+
+    await vi.runAllTimersAsync();
+    await run;
+
+    // IN_PROGRESS -> BUSY isn't a legal transition (CALL_STATUS_TRANSITIONS), so a "busy" scenario
+    // outcome combined with an already-answered call can only resolve to FAILED — but the original
+    // outcome value survives in the payload rather than being silently dropped.
+    expect(transitions.at(-1)).toMatchObject({ eventType: "call_failed", status: "FAILED", payload: { outcome: "busy" } });
+  });
+
   it("publishes each turn as a transcription segment and a data-channel event, in order", async () => {
     const session = new StubVoiceSession(config());
     const run = session.run(scenario(), async () => {});

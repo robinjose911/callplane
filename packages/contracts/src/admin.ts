@@ -86,3 +86,46 @@ export const LanguageProfileSchema = z.object({
 });
 
 export type LanguageProfileResponse = z.infer<typeof LanguageProfileSchema>;
+
+/** SIP trunk provider config shapes (D9) — Telnyx/Twilio/generic all share the same DB row shape. */
+export const SipTrunkProviderSchema = z.enum(["telnyx", "twilio", "generic"]);
+export type SipTrunkProvider = z.infer<typeof SipTrunkProviderSchema>;
+
+/**
+ * SIP trunk registry entry. `credentialsRef` is a logical pointer to credentials (an env var name
+ * or secret ID), never the raw secret itself — but every read path still redacts it to `"****"`
+ * as defense in depth (public-repo hygiene, matching the webhook-secret redaction convention).
+ */
+export const SipTrunkSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  provider: SipTrunkProviderSchema,
+  livekitTrunkId: z.string().min(1),
+  credentialsRef: z.string(),
+  maxConcurrentCalls: z.number().int().positive(),
+  weight: z.number().int().min(0),
+  isActive: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type SipTrunkResponse = z.infer<typeof SipTrunkSchema>;
+
+export const CreateSipTrunkBodySchema = z.object({
+  name: z.string().min(1),
+  provider: SipTrunkProviderSchema,
+  livekitTrunkId: z.string().min(1),
+  credentialsRef: z.string().min(1),
+  maxConcurrentCalls: z.number().int().positive().optional(),
+  weight: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export type CreateSipTrunkBody = z.infer<typeof CreateSipTrunkBodySchema>;
+
+export const UpdateSipTrunkBodySchema = CreateSipTrunkBodySchema.omit({ name: true }).partial();
+
+export type UpdateSipTrunkBody = z.infer<typeof UpdateSipTrunkBodySchema>;
+
+export const SetTrunkStatusBodySchema = z.object({ isActive: z.boolean() });
+export type SetTrunkStatusBody = z.infer<typeof SetTrunkStatusBodySchema>;

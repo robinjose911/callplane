@@ -3,7 +3,7 @@ import type { Queue } from "bullmq";
 import { CallRequestSchema, CallStatusSchema, type CallExecutorJobData } from "@callplane/contracts";
 import type { AgentConfigRepository, Call, CallEventRepository, CallRepository } from "@callplane/database";
 import { requireApiKey } from "../middleware/auth.js";
-import { sendErrorDefault } from "../lib/send-error.js";
+import { sendErrorDefault, sendValidationError } from "../lib/send-error.js";
 import { AgentNotFoundError, initiateCall } from "../services/call-initiation.service.js";
 import { serializeCall, serializeCallEvent } from "../lib/serialize-call.js";
 import { parsePaginationOrRespond, toOffset } from "../lib/pagination-query.js";
@@ -33,12 +33,7 @@ export function createCallsRouter(deps: CallsRouterDeps): Router {
   router.post("/v1/calls", requireApiKey, async (req, res, next) => {
     const parsed = CallRequestSchema.safeParse(req.body);
     if (!parsed.success) {
-      sendErrorDefault(
-        res,
-        "VALIDATION_ERROR",
-        "Invalid request body.",
-        parsed.error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })),
-      );
+      sendValidationError(res, parsed.error);
       return;
     }
 
