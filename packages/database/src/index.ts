@@ -76,6 +76,12 @@ export {
 } from "./repositories/language-profile.repository.js";
 
 export {
+  createVoiceModelOptionRepository,
+  type VoiceModelOptionRepository,
+  type CreateVoiceModelOptionInput,
+} from "./repositories/voice-model-option.repository.js";
+
+export {
   createWebhookEndpointRepository,
   type WebhookEndpointRepository,
   type CreateWebhookEndpointInput,
@@ -121,6 +127,7 @@ export type {
   CallCost,
   PriceTable,
   Recording,
+  VoiceModelOption,
 } from "@prisma/client";
 
 export {
@@ -137,6 +144,7 @@ export {
   ProviderPriority,
   WebhookEventType,
   WebhookDeliveryStatus,
+  VoiceModelType,
 } from "@prisma/client";
 
 // ─── Seed fixtures ──────────────────────────────────────────────────────────────
@@ -148,5 +156,6 @@ export { SIP_TRUNK_NAMES, SIP_TRUNK_FIXTURES } from "./fixtures/sip-trunks.js";
 export { LANGUAGE_PROFILE_FIXTURES } from "./fixtures/language-profiles.js";
 export { WEBHOOK_ENDPOINT_NAMES, WEBHOOK_ENDPOINT_FIXTURES } from "./fixtures/webhook-endpoint.js";
 export { PRICE_TABLE_FIXTURES } from "./fixtures/price-table.js";
+export { VOICE_MODEL_OPTION_FIXTURES } from "./fixtures/voice-model-options.js";
 export { STUB_SCENARIO_NAMES, STUB_SCENARIOS } from "./fixtures/stub-scenarios.js";
 export { seed } from "./seed.js";

@@ -11,11 +11,13 @@ import { createSipTrunkRepository } from "./repositories/sip-trunk.repository.js
 import { createLanguageProfileRepository } from "./repositories/language-profile.repository.js";
 import { createWebhookEndpointRepository } from "./repositories/webhook-endpoint.repository.js";
 import { createPriceTableRepository } from "./repositories/price-table.repository.js";
+import { createVoiceModelOptionRepository } from "./repositories/voice-model-option.repository.js";
 import { AGENT_CONFIG_FIXTURES } from "./fixtures/agent-configs.js";
 import { SIP_TRUNK_FIXTURES } from "./fixtures/sip-trunks.js";
 import { LANGUAGE_PROFILE_FIXTURES } from "./fixtures/language-profiles.js";
 import { WEBHOOK_ENDPOINT_FIXTURES } from "./fixtures/webhook-endpoint.js";
 import { PRICE_TABLE_FIXTURES } from "./fixtures/price-table.js";
+import { VOICE_MODEL_OPTION_FIXTURES } from "./fixtures/voice-model-options.js";
 
 export async function seed(): Promise<void> {
   const agentConfigRepo = createAgentConfigRepository(prisma);
@@ -23,6 +25,7 @@ export async function seed(): Promise<void> {
   const languageProfileRepo = createLanguageProfileRepository(prisma);
   const webhookEndpointRepo = createWebhookEndpointRepository(prisma);
   const priceTableRepo = createPriceTableRepository(prisma);
+  const voiceModelOptionRepo = createVoiceModelOptionRepository(prisma);
 
   for (const fixture of AGENT_CONFIG_FIXTURES) {
     await agentConfigRepo.upsertByName(fixture.name, fixture);
@@ -42,6 +45,10 @@ export async function seed(): Promise<void> {
 
   for (const fixture of PRICE_TABLE_FIXTURES) {
     await priceTableRepo.upsert(fixture);
+  }
+
+  for (const fixture of VOICE_MODEL_OPTION_FIXTURES) {
+    await voiceModelOptionRepo.upsertByNameAndType(fixture);
   }
 }
 

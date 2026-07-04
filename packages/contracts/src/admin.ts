@@ -72,7 +72,30 @@ export const CreateAgentConfigBodySchema = z.object({
 
 export type CreateAgentConfigBody = z.infer<typeof CreateAgentConfigBodySchema>;
 
-export const UpdateAgentConfigBodySchema = CreateAgentConfigBodySchema.partial();
+/**
+ * Unlike `CreateAgentConfigBodySchema`, the mode/provider fields here are `.nullable()` as well
+ * as `.optional()` — switching `voiceMode` (e.g. realtime -> cascade) must be able to explicitly
+ * clear the fields that no longer apply (`s2sProvider`/`s2sModel`/`reasoningEffort`), not just
+ * omit them. An omitted field means "leave unchanged" (a genuine PATCH partial-update semantic);
+ * a `null` field means "clear it". Without this, switching modes leaves stale values in the DB
+ * that a later read path (e.g. the console's agents list, which falls back `s2sProvider ??
+ * llmProvider`) can surface incorrectly.
+ */
+export const UpdateAgentConfigBodySchema = z.object({
+  voiceMode: VoiceModeSchema.optional(),
+  s2sProvider: S2sProviderSchema.nullable().optional(),
+  s2sModel: z.string().min(1).nullable().optional(),
+  sttProvider: SttProviderSchema.nullable().optional(),
+  llmProvider: LlmProviderSchema.nullable().optional(),
+  llmModel: z.string().min(1).nullable().optional(),
+  ttsProvider: TtsProviderSchema.nullable().optional(),
+  ttsVoiceId: z.string().min(1).nullable().optional(),
+  reasoningEffort: ReasoningEffortSchema.nullable().optional(),
+  prompt: z.string().min(1).optional(),
+  enableShortFirstResponse: z.boolean().optional(),
+  languageProfileId: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+});
 
 export type UpdateAgentConfigBody = z.infer<typeof UpdateAgentConfigBodySchema>;
 
@@ -129,3 +152,28 @@ export type UpdateSipTrunkBody = z.infer<typeof UpdateSipTrunkBodySchema>;
 
 export const SetTrunkStatusBodySchema = z.object({ isActive: z.boolean() });
 export type SetTrunkStatusBody = z.infer<typeof SetTrunkStatusBodySchema>;
+
+/**
+ * Known model names shown in the console's agent-config editor dropdowns (the source project's
+ * VoiceModelOption pattern) — "llm" populates cascade's llmModel field, "s2s" populates
+ * realtime/half_cascade's s2sModel field.
+ */
+export const VoiceModelTypeSchema = z.enum(["llm", "s2s"]);
+export type VoiceModelType = z.infer<typeof VoiceModelTypeSchema>;
+
+export const VoiceModelOptionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  modelType: VoiceModelTypeSchema,
+  isBuiltIn: z.boolean(),
+  createdAt: z.string(),
+});
+
+export type VoiceModelOptionResponse = z.infer<typeof VoiceModelOptionSchema>;
+
+export const CreateVoiceModelOptionBodySchema = z.object({
+  name: z.string().min(1, "Model name is required"),
+  modelType: VoiceModelTypeSchema,
+});
+
+export type CreateVoiceModelOptionBody = z.infer<typeof CreateVoiceModelOptionBodySchema>;

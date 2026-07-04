@@ -5,6 +5,8 @@ import { assertStubMode } from "./helpers/stub-probe.js";
 
 const execFileAsync = promisify(execFile);
 const API_BASE_URL = process.env["API_BASE_URL"] ?? "http://localhost:4300";
+const CALLPLANE_API_KEY = process.env["CALLPLANE_API_KEY"] ?? "e2e-test-key";
+const AUTH_HEADERS = { Authorization: `Bearer ${CALLPLANE_API_KEY}` };
 
 const EXPECTED_AGENT_NAMES = [
   "demo-azure-realtime",
@@ -21,7 +23,7 @@ test.beforeAll(async ({ request }) => {
 
 test.describe("stage 1: data layer", () => {
   test("GET /v1/agents returns the 6 seeded configs with correct mode/provider fields", async ({ request }) => {
-    const response = await request.get(`${API_BASE_URL}/v1/agents`);
+    const response = await request.get(`${API_BASE_URL}/v1/agents`, { headers: AUTH_HEADERS });
     expect(response.status()).toBe(200);
 
     const body = await response.json();
@@ -47,13 +49,13 @@ test.describe("stage 1: data layer", () => {
   });
 
   test("re-seeding mid-spec does not change the queryable data", async ({ request }) => {
-    const before = await (await request.get(`${API_BASE_URL}/v1/agents`)).json();
+    const before = await (await request.get(`${API_BASE_URL}/v1/agents`, { headers: AUTH_HEADERS })).json();
 
     await execFileAsync("npm", ["run", "db:seed", "--workspace=@callplane/database"], {
       cwd: new URL("../../..", import.meta.url).pathname,
     });
 
-    const after = await (await request.get(`${API_BASE_URL}/v1/agents`)).json();
+    const after = await (await request.get(`${API_BASE_URL}/v1/agents`, { headers: AUTH_HEADERS })).json();
 
     expect(after.agents).toHaveLength(before.agents.length);
     const beforeIds = before.agents.map((a: { id: string }) => a.id).sort();

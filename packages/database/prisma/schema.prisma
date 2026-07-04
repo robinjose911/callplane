@@ -109,6 +109,14 @@ enum ProviderType {
   @@schema("callplane")
 }
 
+/// Which agent-config field a VoiceModelOption populates: llmModel (cascade) or s2sModel (realtime/half_cascade).
+enum VoiceModelType {
+  llm
+  s2s
+
+  @@schema("callplane")
+}
+
 enum ProviderPriority {
   primary
   secondary
@@ -214,6 +222,21 @@ model LanguageProfile {
   agentConfigs AgentConfig[]
 
   @@map("language_profiles")
+  @@schema("callplane")
+}
+
+/// Known model names shown in the console's agent-config editor dropdowns (the source project's
+/// VoiceModelOption pattern) — `isBuiltIn` rows come from the seed; console users can add more
+/// via the "Add custom model" affordance without a code change.
+model VoiceModelOption {
+  id        String         @id @default(uuid())
+  name      String
+  modelType VoiceModelType @map("model_type")
+  isBuiltIn Boolean        @default(false) @map("is_built_in")
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@unique([name, modelType])
+  @@map("voice_model_options")
   @@schema("callplane")
 }
 

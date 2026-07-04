@@ -12,6 +12,8 @@ import {
 import { createQueue } from "@callplane/voice-core";
 import { healthRouter } from "./routes/health.js";
 import { agentsRouter } from "./routes/agents.js";
+import { modelOptionsRouter } from "./routes/model-options.js";
+import { languageProfilesRouter } from "./routes/language-profiles.js";
 import { createCallsRouter, type CallsRouterDeps } from "./routes/calls.js";
 import { createTrunksRouter } from "./routes/trunks.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -42,6 +44,8 @@ export function createApp(overrides?: CreateAppOverrides): Express {
   app.use(express.json());
   app.use(healthRouter);
   app.use(agentsRouter);
+  app.use(modelOptionsRouter);
+  app.use(languageProfilesRouter);
   app.use(
     createCallsRouter({
       agentConfigRepo: overrides?.agentConfigRepo ?? createAgentConfigRepository(prisma),
