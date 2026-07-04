@@ -36,3 +36,12 @@ export {
 export { resolveVoiceSession } from "./lib/resolve-voice-session.js";
 export { createProviderRegistry, type ProviderRegistry, type ProviderChainEntry } from "./lib/provider-registry.js";
 export { resolveProvider, AllProvidersFailedError, type FailoverOptions } from "./lib/failover-resolver.js";
+export {
+  createLiveKitRoomManager,
+  LIVEKIT_AGENT_NAME,
+  type LiveKitRoomManager,
+  type LiveKitClientConfig,
+  type RoomMetadata,
+} from "./lib/room-manager.js";
+export { StubVoiceSession, type StubVoiceSessionConfig } from "./lib/stub-voice-session.js";
+export { RealCallRunner } from "./lib/real-call-runner.js";

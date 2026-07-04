@@ -9,6 +9,9 @@ const stubEnv = {
   SIP_STUB_MODE: "true",
   RECORDING_MODE: "stub",
   CALLPLANE_API_KEY: "e2e-test-key",
+  // Stage 3: routes the worker's call-executor through a real LiveKit room + StubVoiceSession
+  // (RealCallRunner) instead of the in-process StubCallRunner — see stage3-agent.spec.ts.
+  CALL_RUNNER: "livekit",
   LIVEKIT_URL: process.env["LIVEKIT_URL"] ?? "ws://localhost:7880",
   LIVEKIT_API_KEY: "devkey",
   LIVEKIT_API_SECRET: "secret",

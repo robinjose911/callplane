@@ -96,4 +96,23 @@ describe("processCallExecutorJob", () => {
     const call = await callRepo.findBySid(data.callSid);
     expect(call?.status).toBe("FAILED");
   });
+
+  it("fails loudly when CALL_RUNNER=livekit is set without PROVIDER_STUB_MODE=true, instead of silently running the stub anyway", async () => {
+    const data = newJobData();
+    await callRepo.create({ callSid: data.callSid, agentId: agentName, channel: "browser" });
+
+    const originalCallRunner = process.env["CALL_RUNNER"];
+    const originalStubMode = process.env["PROVIDER_STUB_MODE"];
+    process.env["CALL_RUNNER"] = "livekit";
+    delete process.env["PROVIDER_STUB_MODE"];
+
+    try {
+      await expect(processCallExecutorJob(data)).rejects.toThrow(/PROVIDER_STUB_MODE=true/);
+    } finally {
+      if (originalCallRunner !== undefined) process.env["CALL_RUNNER"] = originalCallRunner;
+      else delete process.env["CALL_RUNNER"];
+      if (originalStubMode !== undefined) process.env["PROVIDER_STUB_MODE"] = originalStubMode;
+      else delete process.env["PROVIDER_STUB_MODE"];
+    }
+  });
 });
