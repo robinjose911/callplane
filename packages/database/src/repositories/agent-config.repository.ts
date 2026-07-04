@@ -21,6 +21,7 @@ export interface CreateAgentConfigInput {
   ttsVoiceId?: string;
   reasoningEffort?: ReasoningEffort;
   prompt: string;
+  enableShortFirstResponse?: boolean;
   languageProfileId?: string;
   isActive?: boolean;
 }
@@ -36,6 +37,7 @@ export interface UpdateAgentConfigInput {
   ttsVoiceId?: string | null;
   reasoningEffort?: ReasoningEffort | null;
   prompt?: string;
+  enableShortFirstResponse?: boolean;
   languageProfileId?: string | null;
   isActive?: boolean;
 }

@@ -139,23 +139,26 @@ enum WebhookDeliveryStatus {
 /// provider/model fields are meaningful depends on voiceMode (see AgentConfigSchema doc comment
 /// in @callplane/contracts).
 model AgentConfig {
-  id                String           @id @default(uuid())
+  id                       String           @id @default(uuid())
   /// Human-readable identifier used everywhere else as "agentId" (POST /v1/calls, seed fixtures).
-  name              String           @unique
-  voiceMode         VoiceMode        @map("voice_mode")
-  s2sProvider       S2sProvider?     @map("s2s_provider")
-  s2sModel          String?          @map("s2s_model")
-  sttProvider       SttProvider?     @map("stt_provider")
-  llmProvider       LlmProvider?     @map("llm_provider")
-  llmModel          String?          @map("llm_model")
-  ttsProvider       TtsProvider?     @map("tts_provider")
-  ttsVoiceId        String?          @map("tts_voice_id")
-  reasoningEffort   ReasoningEffort? @map("reasoning_effort")
-  prompt            String
-  languageProfileId String?          @map("language_profile_id")
-  isActive          Boolean          @default(true) @map("is_active")
-  createdAt         DateTime         @default(now()) @map("created_at")
-  updatedAt         DateTime         @updatedAt @map("updated_at")
+  name                     String           @unique
+  voiceMode                VoiceMode        @map("voice_mode")
+  s2sProvider              S2sProvider?     @map("s2s_provider")
+  s2sModel                 String?          @map("s2s_model")
+  sttProvider              SttProvider?     @map("stt_provider")
+  llmProvider              LlmProvider?     @map("llm_provider")
+  llmModel                 String?          @map("llm_model")
+  ttsProvider              TtsProvider?     @map("tts_provider")
+  ttsVoiceId               String?          @map("tts_voice_id")
+  reasoningEffort          ReasoningEffort? @map("reasoning_effort")
+  prompt                   String
+  /// Inject a short affirmative filler ("I see,", "Right,") at the start of each response
+  /// (except the opening greeting) to reduce perceived latency — see prompt-builder.ts.
+  enableShortFirstResponse Boolean          @default(false) @map("enable_short_first_response")
+  languageProfileId        String?          @map("language_profile_id")
+  isActive                 Boolean          @default(true) @map("is_active")
+  createdAt                DateTime         @default(now()) @map("created_at")
+  updatedAt                DateTime         @updatedAt @map("updated_at")
 
   languageProfile LanguageProfile? @relation(fields: [languageProfileId], references: [id])
   calls           Call[]

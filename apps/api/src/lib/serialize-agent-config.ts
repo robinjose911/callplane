@@ -16,6 +16,7 @@ export function serializeAgentConfig(config: AgentConfig): AgentConfigResponse {
     ttsVoiceId: config.ttsVoiceId,
     reasoningEffort: config.reasoningEffort,
     prompt: config.prompt,
+    enableShortFirstResponse: config.enableShortFirstResponse,
     languageProfileId: config.languageProfileId,
     isActive: config.isActive,
     createdAt: config.createdAt.toISOString(),

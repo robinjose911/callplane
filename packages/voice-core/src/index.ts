@@ -5,3 +5,10 @@ export type { HealthPayload } from "./lib/health.js";
 export { createQueue, createWorker, QUEUE_PREFIX } from "./lib/queue.js";
 export type { CallRunner, CallTransition, OnTransition } from "./lib/call-runner.js";
 export { StubCallRunner } from "./lib/stub-call-runner.js";
+export { resolveTemplate } from "./lib/template-resolver.js";
+export { buildSystemPrompt, type PromptBuildParams } from "./lib/prompt-builder.js";
+export {
+  createLanguageProfileLoader,
+  type LanguageContext,
+  type LanguageProfileLoader,
+} from "./lib/language-profile-loader.js";

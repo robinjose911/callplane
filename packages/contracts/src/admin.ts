@@ -44,6 +44,7 @@ export const AgentConfigSchema = z.object({
   ttsVoiceId: z.string().nullable(),
   reasoningEffort: ReasoningEffortSchema.nullable(),
   prompt: z.string().min(1),
+  enableShortFirstResponse: z.boolean(),
   languageProfileId: z.string().nullable(),
   isActive: z.boolean(),
   createdAt: z.string(),
@@ -64,6 +65,7 @@ export const CreateAgentConfigBodySchema = z.object({
   ttsVoiceId: z.string().min(1).optional(),
   reasoningEffort: ReasoningEffortSchema.optional(),
   prompt: z.string().min(1),
+  enableShortFirstResponse: z.boolean().optional(),
   languageProfileId: z.string().optional(),
   isActive: z.boolean().optional(),
 });
