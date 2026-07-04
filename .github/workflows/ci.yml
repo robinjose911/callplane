@@ -13,6 +13,20 @@ jobs:
   lint-typecheck-unit:
     name: Lint, typecheck, unit tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: callplane
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,7 +36,16 @@ jobs:
       - run: npm ci
       - run: npx turbo build
       - run: npx turbo lint
+
+      - name: Push database schema
+        run: npx prisma db push
+        working-directory: packages/database
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/callplane?schema=callplane"
+
       - run: npx turbo test
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/callplane?schema=callplane"
 
   e2e:
     name: Playwright e2e (stub stack)
@@ -77,6 +100,14 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
         working-directory: apps/console
+
+      - name: Push + seed database
+        run: |
+          npx prisma db push
+          npm run db:seed
+        working-directory: packages/database
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/callplane?schema=callplane"
 
       - name: Run e2e specs (stage0..stageN regression)
         run: npx playwright test
