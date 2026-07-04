@@ -34,3 +34,5 @@ export {
   type SessionBuildParams,
 } from "./lib/session-builders.js";
 export { resolveVoiceSession } from "./lib/resolve-voice-session.js";
+export { createProviderRegistry, type ProviderRegistry, type ProviderChainEntry } from "./lib/provider-registry.js";
+export { resolveProvider, AllProvidersFailedError, type FailoverOptions } from "./lib/failover-resolver.js";
