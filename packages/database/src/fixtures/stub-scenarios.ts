@@ -17,6 +17,9 @@ export const STUB_SCENARIOS: Record<string, StubScenario> = {
     name: STUB_SCENARIO_NAMES.GREETING,
     turns: [{ role: "agent", text: "Hi, thanks for calling callplane! How can I help today?", delayMs: 500 }],
     outcome: "completed",
+    // Fixed, deterministic usage (Stage 9) — chosen so every mode's cost total is an exact,
+    // hand-verifiable number of cents against PRICE_TABLE_FIXTURES's illustrative rates.
+    usage: { s2sTokens: 1000, sttSeconds: 5, llmTokens: 500, ttsCharacters: 200 },
   },
   [STUB_SCENARIO_NAMES.BOOKING]: {
     name: STUB_SCENARIO_NAMES.BOOKING,
@@ -29,10 +32,14 @@ export const STUB_SCENARIOS: Record<string, StubScenario> = {
     ],
     outcome: "completed",
     toolCalls: [{ afterTurnIndex: 1, toolName: "check_calendar", arguments: { day: "Monday" } }],
+    usage: { s2sTokens: 5000, sttSeconds: 20, llmTokens: 2500, ttsCharacters: 1000 },
   },
   [STUB_SCENARIO_NAMES.FAILURE]: {
     name: STUB_SCENARIO_NAMES.FAILURE,
     turns: [{ role: "agent", text: "Sorry, I'm having trouble connecting right now.", delayMs: 300 }],
     outcome: "failed",
+    // No cost row is ever created for a non-completed call, so this usage is unreachable in
+    // practice — present only because the field type is shared, not because it's meaningful here.
+    usage: { s2sTokens: 0, sttSeconds: 0, llmTokens: 0, ttsCharacters: 0 },
   },
 };

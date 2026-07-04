@@ -1,4 +1,4 @@
-import type { Call, CallEvent } from "@callplane/database";
+import type { Call, CallCost, CallEvent } from "@callplane/database";
 
 export function serializeCall(call: Call) {
   return {
@@ -21,5 +21,19 @@ export function serializeCallEvent(event: CallEvent) {
     eventType: event.eventType,
     payload: event.payload,
     createdAt: event.createdAt.toISOString(),
+  };
+}
+
+export function serializeCallCost(cost: CallCost) {
+  return {
+    id: cost.id,
+    callSid: cost.callSid,
+    provider: cost.provider,
+    providerType: cost.providerType,
+    units: Number(cost.units),
+    unitType: cost.unitType,
+    costAmount: Number(cost.costAmount),
+    currency: cost.currency,
+    createdAt: cost.createdAt.toISOString(),
   };
 }

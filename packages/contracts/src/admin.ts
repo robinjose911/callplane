@@ -244,3 +244,25 @@ export const WebhookOutboxEntrySchema = z.object({
 });
 
 export type WebhookOutboxEntryResponse = z.infer<typeof WebhookOutboxEntrySchema>;
+
+/** One `PriceTable` row — D6: console-editable, never a hardcoded constant. */
+export const PriceTableEntrySchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  providerType: z.string(),
+  unitType: z.string(),
+  pricePerUnit: z.number(),
+  currency: z.string(),
+});
+
+export type PriceTableEntryResponse = z.infer<typeof PriceTableEntrySchema>;
+
+export const UpsertPriceTableEntryBodySchema = z.object({
+  provider: z.string().min(1),
+  providerType: z.string().min(1),
+  unitType: z.string().min(1),
+  pricePerUnit: z.number().nonnegative(),
+  currency: z.string().min(1).optional(),
+});
+
+export type UpsertPriceTableEntryBody = z.infer<typeof UpsertPriceTableEntryBodySchema>;

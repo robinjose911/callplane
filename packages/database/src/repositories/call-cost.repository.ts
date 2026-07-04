@@ -19,6 +19,11 @@ export function createCallCostRepository(prisma: PrismaClient) {
     async findByCallSid(callSid: string): Promise<CallCost[]> {
       return prisma.callCost.findMany({ where: { callSid }, orderBy: { createdAt: "asc" } });
     },
+
+    /** All cost rows, most recent first — capped at 500 for the console's aggregate dashboard. */
+    async listRecent(): Promise<CallCost[]> {
+      return prisma.callCost.findMany({ orderBy: { createdAt: "desc" }, take: 500 });
+    },
   };
 }
 

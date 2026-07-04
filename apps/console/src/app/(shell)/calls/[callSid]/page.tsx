@@ -35,6 +35,18 @@ interface WebhookOutboxEntryResponse {
   updatedAt: string;
 }
 
+interface CallCostResponse {
+  id: string;
+  callSid: string;
+  provider: string;
+  providerType: string;
+  units: number;
+  unitType: string;
+  costAmount: number;
+  currency: string;
+  createdAt: string;
+}
+
 async function fetchCall(callSid: string): Promise<CallResponse | undefined> {
   const response = await apiFetch(`/v1/calls/${callSid}`);
   if (!response.ok) return undefined;
@@ -55,12 +67,27 @@ async function fetchWebhookDeliveries(callSid: string): Promise<WebhookOutboxEnt
   return body.entries;
 }
 
+async function fetchCosts(callSid: string): Promise<CallCostResponse[]> {
+  const response = await apiFetch(`/v1/calls/${callSid}/cost`);
+  if (!response.ok) return [];
+  const body = (await response.json()) as { costs: CallCostResponse[] };
+  return body.costs;
+}
+
+// A HEAD request only — never fetches (and discards) the WAV body just to check existence.
+async function fetchHasRecording(callSid: string): Promise<boolean> {
+  const response = await apiFetch(`/v1/calls/${callSid}/recording`, { method: "HEAD" });
+  return response.ok;
+}
+
 export default async function CallDetailPage({ params }: { params: Promise<{ callSid: string }> }) {
   const { callSid } = await params;
-  const [call, events, webhookDeliveries] = await Promise.all([
+  const [call, events, webhookDeliveries, costs, hasRecording] = await Promise.all([
     fetchCall(callSid),
     fetchEvents(callSid),
     fetchWebhookDeliveries(callSid),
+    fetchCosts(callSid),
+    fetchHasRecording(callSid),
   ]);
 
   if (!call) {
@@ -72,7 +99,13 @@ export default async function CallDetailPage({ params }: { params: Promise<{ cal
       <h1 className="text-2xl font-semibold tracking-tight">
         Call <span className="font-mono text-lg">{call.callSid.slice(0, 8)}</span>
       </h1>
-      <CallDetailClient initialCall={call} initialEvents={events} initialWebhookDeliveries={webhookDeliveries} />
+      <CallDetailClient
+        initialCall={call}
+        initialEvents={events}
+        initialWebhookDeliveries={webhookDeliveries}
+        initialCosts={costs}
+        initialHasRecording={hasRecording}
+      />
     </div>
   );
 }

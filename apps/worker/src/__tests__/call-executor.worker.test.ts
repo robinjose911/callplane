@@ -9,6 +9,7 @@ const callRepo = createCallRepository(prisma);
 const callEventRepo = createCallEventRepository(prisma);
 
 const agentName = "test-worker-agent";
+const costedAgentName = "test-worker-costed-agent";
 const callSids: string[] = [];
 
 function newJobData(overrides: Partial<CallExecutorJobData> = {}): CallExecutorJobData {
@@ -27,15 +28,24 @@ function newJobData(overrides: Partial<CallExecutorJobData> = {}): CallExecutorJ
 
 beforeAll(async () => {
   await agentConfigRepo.create({ name: agentName, voiceMode: "realtime", prompt: "x" });
+  await agentConfigRepo.create({
+    name: costedAgentName,
+    voiceMode: "cascade",
+    prompt: "x",
+    sttProvider: "deepgram",
+    llmProvider: "openai",
+    ttsProvider: "elevenlabs",
+  });
 });
 
 afterAll(async () => {
   // A completed/failed call now also enqueues a WebhookOutbox row (Stage 8) — must be deleted
   // before the Call row it references, or the FK constraint blocks the Call/AgentConfig cleanup.
   await prisma.webhookOutbox.deleteMany({ where: { callSid: { in: callSids } } });
+  await prisma.callCost.deleteMany({ where: { callSid: { in: callSids } } });
   await prisma.callEvent.deleteMany({ where: { callSid: { in: callSids } } });
   await prisma.call.deleteMany({ where: { callSid: { in: callSids } } });
-  await prisma.agentConfig.deleteMany({ where: { name: agentName } });
+  await prisma.agentConfig.deleteMany({ where: { name: { in: [agentName, costedAgentName] } } });
 });
 
 describe("processCallExecutorJob", () => {
@@ -71,6 +81,24 @@ describe("processCallExecutorJob", () => {
       "transcript_turn",
       "call_completed",
     ]);
+  });
+
+  it("meters a completed cascade call's cost from the scenario's fixed usage, one row per leg", async () => {
+    const data = newJobData({ agentId: costedAgentName, scenario: "demo_greeting" });
+    await callRepo.create({
+      callSid: data.callSid,
+      agentId: costedAgentName,
+      channel: "browser",
+      scenario: "demo_greeting",
+    });
+
+    await processCallExecutorJob(data);
+
+    const costs = await prisma.callCost.findMany({ where: { callSid: data.callSid }, orderBy: { providerType: "asc" } });
+    expect(costs.map((c) => c.providerType)).toEqual(["llm", "stt", "tts"]);
+    const sttLeg = costs.find((c) => c.providerType === "stt")!;
+    expect(sttLeg.provider).toBe("deepgram");
+    expect(Number(sttLeg.units)).toBe(5); // demo_greeting's fixed sttSeconds usage
   });
 
   it("failure scenario (demo_failure) ends FAILED", async () => {

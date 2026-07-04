@@ -30,6 +30,9 @@ coverage/
 playwright-report/
 test-results/
 
+# Stub recordings (RECORDING_MODE=stub local WAV output — generated, never committed)
+**/data/recordings/
+
 # Editor
 .vscode/
 .idea/

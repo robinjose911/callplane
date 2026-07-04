@@ -6,8 +6,12 @@ import {
   type WebhookDispatcherJobData,
 } from "@callplane/contracts";
 import {
+  createAgentConfigRepository,
+  createCallCostRepository,
   createCallEventRepository,
   createCallRepository,
+  createPriceTableRepository,
+  createRecordingRepository,
   createSipTrunkRepository,
   createWebhookEndpointRepository,
   createWebhookOutboxRepository,
@@ -17,10 +21,13 @@ import {
 import type { Worker } from "bullmq";
 import {
   createChildLogger,
+  createLocalDiskAdapter,
   createQueue,
   createWorker,
   buildCallRunner,
   enqueueWebhooksForCall,
+  meterCallCost,
+  recordCallStub,
   type CallRunner,
 } from "@callplane/voice-core";
 
@@ -32,6 +39,11 @@ const sipTrunkRepo = createSipTrunkRepository(prisma);
 const webhookEndpointRepo = createWebhookEndpointRepository(prisma);
 const webhookOutboxRepo = createWebhookOutboxRepository(prisma);
 const webhookDispatcherQueue = createQueue<WebhookDispatcherJobData>("webhook-dispatcher");
+const agentConfigRepo = createAgentConfigRepository(prisma);
+const priceTableRepo = createPriceTableRepository(prisma);
+const callCostRepo = createCallCostRepository(prisma);
+const recordingRepo = createRecordingRepository(prisma);
+const storageAdapter = createLocalDiskAdapter(process.env["RECORDINGS_DIR"] ?? "./data/recordings");
 
 export class IllegalTransitionError extends Error {
   constructor(from: CallStatus, to: CallStatus) {
@@ -108,6 +120,19 @@ export async function processCallExecutorJob(
           webhookDispatcherQueue,
         }).catch((err: unknown) => {
           logger.error({ callSid: call.callSid, err }, "call-executor: failed to enqueue webhooks");
+        });
+
+        // meterCallCost no-ops for anything but COMPLETED, and for a scenario-less call (no fixed
+        // usage to report yet — real-provider usage reporting is post-v1).
+        await meterCallCost(finalCall, scenario?.usage, { agentConfigRepo, priceTableRepo, callCostRepo, callEventRepo }).catch(
+          (err: unknown) => {
+            logger.error({ callSid: call.callSid, err }, "call-executor: failed to meter call cost");
+          },
+        );
+
+        // recordCallStub no-ops for anything but a COMPLETED call under RECORDING_MODE=stub.
+        await recordCallStub(finalCall, scenario, { storageAdapter, recordingRepo }).catch((err: unknown) => {
+          logger.error({ callSid: call.callSid, err }, "call-executor: failed to record call stub");
         });
       }
     }

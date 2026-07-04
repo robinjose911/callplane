@@ -44,6 +44,18 @@ interface WebhookOutboxEntryResponse {
   updatedAt: string;
 }
 
+interface CallCostResponse {
+  id: string;
+  callSid: string;
+  provider: string;
+  providerType: string;
+  units: number;
+  unitType: string;
+  costAmount: number;
+  currency: string;
+  createdAt: string;
+}
+
 function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   if (status === "COMPLETED") return "default";
   if (["FAILED", "NO_ANSWER", "BUSY", "CALL_DROPPED"].includes(status)) return "destructive";
@@ -55,14 +67,20 @@ export function CallDetailClient({
   initialCall,
   initialEvents,
   initialWebhookDeliveries,
+  initialCosts,
+  initialHasRecording,
 }: {
   initialCall: CallResponse;
   initialEvents: CallEventResponse[];
   initialWebhookDeliveries: WebhookOutboxEntryResponse[];
+  initialCosts: CallCostResponse[];
+  initialHasRecording: boolean;
 }) {
   const [call, setCall] = useState(initialCall);
   const [events, setEvents] = useState(initialEvents);
   const [webhookDeliveries, setWebhookDeliveries] = useState(initialWebhookDeliveries);
+  const [costs, setCosts] = useState(initialCosts);
+  const [hasRecording, setHasRecording] = useState(initialHasRecording);
   const [replayingId, setReplayingId] = useState<string | undefined>(undefined);
   const callSid = initialCall.callSid;
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -92,13 +110,17 @@ export function CallDetailClient({
       if (pollInFlight) return;
       pollInFlight = true;
       try {
-        const [callRes, eventsRes, webhooksRes] = await Promise.all([
+        const [callRes, eventsRes, webhooksRes, costsRes, recordingRes] = await Promise.all([
           fetch(`/api/calls/${callSid}`),
           fetch(`/api/calls/${callSid}/events?limit=100`),
           fetch(`/api/webhook-outbox?callSid=${callSid}`),
+          fetch(`/api/calls/${callSid}/cost`),
+          hasRecording ? Promise.resolve(undefined) : fetch(`/api/calls/${callSid}/recording`, { method: "HEAD" }),
         ]);
         if (callRes.ok) setCall(await callRes.json());
         if (eventsRes.ok) setEvents((await eventsRes.json()).events);
+        if (costsRes.ok) setCosts((await costsRes.json()).costs);
+        if (recordingRes?.ok) setHasRecording(true);
         if (webhooksRes.ok) {
           const { entries } = (await webhooksRes.json()) as { entries: WebhookOutboxEntryResponse[] };
           setWebhookDeliveries(entries);
@@ -122,7 +144,7 @@ export function CallDetailClient({
 
     intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(intervalRef.current);
-  }, [callSid, callIsTerminal, deliveriesAreTerminal, webhookDeliveries.length]);
+  }, [callSid, callIsTerminal, deliveriesAreTerminal, webhookDeliveries.length, hasRecording]);
 
   async function handleReplay(id: string) {
     setReplayingId(id);
@@ -175,6 +197,43 @@ export function CallDetailClient({
           )}
         </CardContent>
       </Card>
+
+      {hasRecording && (
+        <Card data-testid="call-recording-card">
+          <CardHeader>
+            <CardTitle>Recording</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <audio controls src={`/api/calls/${callSid}/recording`} data-testid="call-recording-player" />
+          </CardContent>
+        </Card>
+      )}
+
+      {costs.length > 0 && (
+        <Card data-testid="call-cost-card">
+          <CardHeader>
+            <CardTitle>Cost</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="flex flex-col gap-1 text-sm" data-testid="call-cost-legs">
+              {costs.map((leg) => (
+                <li key={leg.id} data-testid={`call-cost-leg-${leg.providerType}`} className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    {leg.provider} · {leg.providerType} · {leg.units} {leg.unitType}
+                  </span>
+                  <span className="font-mono">${leg.costAmount.toFixed(6)}</span>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-2 flex justify-between border-t pt-2 text-sm font-medium">
+              <span>Total</span>
+              <span data-testid="call-cost-total" className="font-mono">
+                ${costs.reduce((sum, leg) => sum + leg.costAmount, 0).toFixed(6)}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {transcriptTurns.length > 0 && (
         <Card>

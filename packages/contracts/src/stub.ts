@@ -34,11 +34,29 @@ export const StubScenarioToolCallSchema = z.object({
 
 export type StubScenarioToolCall = z.infer<typeof StubScenarioToolCallSchema>;
 
+/**
+ * Fixed, deterministic per-call usage for cost metering (Stage 9) — not derived from turn text
+ * length or timing, so an e2e spec can assert an exact cost-in-cents total. Every leg is
+ * reported regardless of the agent's actual voice mode; `cost-meter.ts` picks out only the legs
+ * that mode/provider combination actually uses.
+ */
+export const StubScenarioUsageSchema = z.object({
+  s2sTokens: z.number().int().min(0),
+  sttSeconds: z.number().min(0),
+  llmTokens: z.number().int().min(0),
+  ttsCharacters: z.number().int().min(0),
+});
+
+export type StubScenarioUsage = z.infer<typeof StubScenarioUsageSchema>;
+
 export const StubScenarioSchema = z.object({
   name: z.string().min(1),
   turns: z.array(StubScenarioTurnSchema).min(1),
   outcome: StubScenarioOutcomeSchema,
   toolCalls: z.array(StubScenarioToolCallSchema).optional(),
+  // Optional (not required) so every ad-hoc StubScenario object literal built by earlier stages'
+  // tests keeps compiling unchanged — cost-meter.ts treats an absent `usage` as all-zero legs.
+  usage: StubScenarioUsageSchema.optional(),
 });
 
 export type StubScenario = z.infer<typeof StubScenarioSchema>;

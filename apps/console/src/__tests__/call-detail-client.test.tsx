@@ -38,6 +38,21 @@ function delivery(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+function costLeg(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "cost-1",
+    callSid: "call-1",
+    provider: "deepgram",
+    providerType: "stt",
+    units: 5,
+    unitType: "seconds",
+    costAmount: 0.0215,
+    currency: "USD",
+    createdAt: "2026-07-04T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 describe("CallDetailClient", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -46,7 +61,7 @@ describe("CallDetailClient", () => {
 
   it("renders the timeline events in the order given", () => {
     const events = [event("call_queued"), event("call_dialing"), event("call_in_progress")];
-    render(<CallDetailClient initialCall={call()} initialEvents={events} initialWebhookDeliveries={[]} />);
+    render(<CallDetailClient initialCall={call()} initialEvents={events} initialWebhookDeliveries={[]} initialCosts={[]} initialHasRecording={false} />);
 
     const items = screen.getAllByTestId(/^timeline-event-/);
     expect(items.map((el) => el.dataset["testid"])).toEqual([
@@ -61,7 +76,7 @@ describe("CallDetailClient", () => {
       event("transcript_turn", { role: "agent", text: "Hi there" }, "t1"),
       event("transcript_turn", { role: "user", text: "Hello" }, "t2"),
     ];
-    render(<CallDetailClient initialCall={call()} initialEvents={events} initialWebhookDeliveries={[]} />);
+    render(<CallDetailClient initialCall={call()} initialEvents={events} initialWebhookDeliveries={[]} initialCosts={[]} initialHasRecording={false} />);
 
     expect(screen.getByTestId("call-turn-0")).toHaveTextContent("agent: Hi there");
     expect(screen.getByTestId("call-turn-1")).toHaveTextContent("user: Hello");
@@ -71,12 +86,13 @@ describe("CallDetailClient", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+      if (url.includes("/cost")) return Promise.resolve({ ok: true, json: async () => ({ costs: [] }) });
       if (url.includes("/webhook-outbox")) return Promise.resolve({ ok: true, json: async () => ({ entries: [] }) });
       return Promise.resolve({ ok: true, json: async () => call({ status: "IN_PROGRESS" }) });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} initialWebhookDeliveries={[]} />);
+    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} initialWebhookDeliveries={[]} initialCosts={[]} initialHasRecording={false} />);
     expect(screen.getByTestId("live-indicator")).toBeInTheDocument();
 
     await act(() => vi.advanceTimersByTimeAsync(1000));
@@ -94,6 +110,7 @@ describe("CallDetailClient", () => {
         initialCall={call({ status: "COMPLETED" })}
         initialEvents={[]}
         initialWebhookDeliveries={[delivery({ status: "DELIVERED" })]}
+        initialCosts={[]} initialHasRecording={false}
       />,
     );
     expect(screen.queryByTestId("live-indicator")).not.toBeInTheDocument();
@@ -107,6 +124,7 @@ describe("CallDetailClient", () => {
     let pollCount = 0;
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+      if (url.includes("/cost")) return Promise.resolve({ ok: true, json: async () => ({ costs: [] }) });
       if (url.includes("/webhook-outbox")) {
         return Promise.resolve({ ok: true, json: async () => ({ entries: [delivery({ status: "DELIVERED" })] }) });
       }
@@ -120,6 +138,7 @@ describe("CallDetailClient", () => {
         initialCall={call({ status: "IN_PROGRESS" })}
         initialEvents={[]}
         initialWebhookDeliveries={[delivery({ status: "PENDING" })]}
+        initialCosts={[]} initialHasRecording={false}
       />,
     );
 
@@ -135,13 +154,14 @@ describe("CallDetailClient", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+      if (url.includes("/cost")) return Promise.resolve({ ok: true, json: async () => ({ costs: [] }) });
       if (url.includes("/webhook-outbox")) return Promise.resolve({ ok: true, json: async () => ({ entries: [] }) });
       return Promise.resolve({ ok: true, json: async () => call({ status: "COMPLETED" }) });
     });
     vi.stubGlobal("fetch", fetchMock);
 
     render(
-      <CallDetailClient initialCall={call({ status: "COMPLETED" })} initialEvents={[]} initialWebhookDeliveries={[]} />,
+      <CallDetailClient initialCall={call({ status: "COMPLETED" })} initialEvents={[]} initialWebhookDeliveries={[]} initialCosts={[]} initialHasRecording={false} />,
     );
 
     // Still within the grace period (5 of the 10 allotted ticks) — polling continues even though
@@ -165,7 +185,9 @@ describe("CallDetailClient", () => {
 
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+      if (url.includes("/cost")) return Promise.resolve({ ok: true, json: async () => ({ costs: [] }) });
       if (url.includes("/webhook-outbox")) return Promise.resolve({ ok: true, json: async () => ({ entries: [] }) });
+      if (url.includes("/recording")) return Promise.resolve({ ok: false });
       pollStarts += 1;
       if (pollStarts === 1) {
         // First tick's /api/calls/:callSid fetch never resolves until we say so — simulates a
@@ -178,7 +200,7 @@ describe("CallDetailClient", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} initialWebhookDeliveries={[]} />);
+    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} initialWebhookDeliveries={[]} initialCosts={[]} initialHasRecording={false} />);
 
     await act(() => vi.advanceTimersByTimeAsync(1000)); // tick 1 starts, hangs
     await act(() => vi.advanceTimersByTimeAsync(1000)); // tick 2 fires while tick 1 is still in flight
@@ -195,14 +217,16 @@ describe("CallDetailClient", () => {
     let attempt = 0;
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+      if (url.includes("/cost")) return Promise.resolve({ ok: true, json: async () => ({ costs: [] }) });
       if (url.includes("/webhook-outbox")) return Promise.resolve({ ok: true, json: async () => ({ entries: [] }) });
+      if (url.includes("/recording")) return Promise.resolve({ ok: false });
       attempt += 1;
       if (attempt === 1) return Promise.reject(new Error("network error"));
       return Promise.resolve({ ok: true, json: async () => call({ status: "IN_PROGRESS" }) });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} initialWebhookDeliveries={[]} />);
+    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} initialWebhookDeliveries={[]} initialCosts={[]} initialHasRecording={false} />);
 
     await act(() => vi.advanceTimersByTimeAsync(1000));
     await act(() => vi.advanceTimersByTimeAsync(1000));
@@ -216,6 +240,7 @@ describe("CallDetailClient", () => {
         initialCall={call({ status: "COMPLETED" })}
         initialEvents={[]}
         initialWebhookDeliveries={[delivery({ status: "DEAD" })]}
+        initialCosts={[]} initialHasRecording={false}
       />,
     );
     expect(screen.getByTestId("webhook-delivery-status-delivery-1")).toHaveTextContent("DEAD");
@@ -227,6 +252,7 @@ describe("CallDetailClient", () => {
         initialCall={call({ status: "COMPLETED" })}
         initialEvents={[]}
         initialWebhookDeliveries={[delivery({ status: "DEAD" })]}
+        initialCosts={[]} initialHasRecording={false}
       />,
     );
     expect(screen.getByTestId("webhook-replay-delivery-1")).toBeInTheDocument();
@@ -237,6 +263,7 @@ describe("CallDetailClient", () => {
         initialCall={call({ status: "COMPLETED" })}
         initialEvents={[]}
         initialWebhookDeliveries={[delivery({ status: "PENDING" })]}
+        initialCosts={[]} initialHasRecording={false}
       />,
     );
     expect(screen.queryByTestId("webhook-replay-delivery-1")).not.toBeInTheDocument();
@@ -254,6 +281,7 @@ describe("CallDetailClient", () => {
         initialCall={call({ status: "COMPLETED" })}
         initialEvents={[]}
         initialWebhookDeliveries={[delivery({ status: "DEAD" })]}
+        initialCosts={[]} initialHasRecording={false}
       />,
     );
     await user.click(screen.getByTestId("webhook-replay-delivery-1"));
@@ -265,6 +293,7 @@ describe("CallDetailClient", () => {
   it("keeps polling while a webhook delivery is still non-terminal, even after the call itself is terminal", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/cost")) return Promise.resolve({ ok: true, json: async () => ({ costs: [] }) });
       if (url.includes("/webhook-outbox")) return Promise.resolve({ ok: true, json: async () => ({ entries: [delivery({ status: "RETRY_PENDING" })] }) });
       if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
       return Promise.resolve({ ok: true, json: async () => call({ status: "COMPLETED" }) });
@@ -276,10 +305,64 @@ describe("CallDetailClient", () => {
         initialCall={call({ status: "COMPLETED" })}
         initialEvents={[]}
         initialWebhookDeliveries={[delivery({ status: "RETRY_PENDING" })]}
+        initialCosts={[]} initialHasRecording={false}
       />,
     );
 
     await act(() => vi.advanceTimersByTimeAsync(1000));
     expect(fetchMock).toHaveBeenCalledWith("/api/webhook-outbox?callSid=call-1");
+  });
+
+  it("renders a cost leg and the running total", () => {
+    render(
+      <CallDetailClient
+        initialCall={call({ status: "COMPLETED" })}
+        initialEvents={[]}
+        initialWebhookDeliveries={[]}
+        initialCosts={[costLeg({ costAmount: 0.0215 }), costLeg({ id: "cost-2", providerType: "llm", costAmount: 0.00125 })]} initialHasRecording={false}
+      />,
+    );
+
+    expect(screen.getByTestId("call-cost-leg-stt")).toBeInTheDocument();
+    expect(screen.getByTestId("call-cost-leg-llm")).toBeInTheDocument();
+    expect(screen.getByTestId("call-cost-total")).toHaveTextContent("$0.022750");
+  });
+
+  it("does not render a cost card when there are no cost rows yet", () => {
+    render(
+      <CallDetailClient
+        initialCall={call({ status: "COMPLETED" })}
+        initialEvents={[]}
+        initialWebhookDeliveries={[]}
+        initialCosts={[]} initialHasRecording={false}
+      />,
+    );
+    expect(screen.queryByTestId("call-cost-card")).not.toBeInTheDocument();
+  });
+
+  it("does not render an audio player when no recording exists yet, even for a completed call", () => {
+    render(
+      <CallDetailClient
+        initialCall={call({ status: "COMPLETED" })}
+        initialEvents={[]}
+        initialWebhookDeliveries={[]}
+        initialCosts={[]}
+        initialHasRecording={false}
+      />,
+    );
+    expect(screen.queryByTestId("call-recording-player")).not.toBeInTheDocument();
+  });
+
+  it("renders an audio player pointed at the recording route once a recording exists", () => {
+    render(
+      <CallDetailClient
+        initialCall={call({ status: "COMPLETED" })}
+        initialEvents={[]}
+        initialWebhookDeliveries={[]}
+        initialCosts={[]}
+        initialHasRecording={true}
+      />,
+    );
+    expect(screen.getByTestId("call-recording-player")).toHaveAttribute("src", "/api/calls/call-1/recording");
   });
 });

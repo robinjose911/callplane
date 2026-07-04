@@ -11,6 +11,9 @@ const stubEnv = {
   PROVIDER_STUB_MODE: "true",
   SIP_STUB_MODE: "true",
   RECORDING_MODE: "stub",
+  // Shared absolute path so api and worker (each launched from a different cwd by webServer)
+  // agree on where recordings live — see apps/api/.env.example's RECORDINGS_DIR comment.
+  RECORDINGS_DIR: "/tmp/callplane-recordings-e2e",
   CALLPLANE_API_KEY: "e2e-test-key",
   // Stage 3: routes the worker's call-executor through a real LiveKit room + StubVoiceSession
   // (RealCallRunner) instead of the in-process StubCallRunner — see stage3-agent.spec.ts.
