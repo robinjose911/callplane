@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { TERMINAL_CALL_STATUSES } from "@callplane/contracts";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const TERMINAL_STATUSES = new Set<string>(TERMINAL_CALL_STATUSES);
+const TERMINAL_WEBHOOK_STATUSES = new Set(["DELIVERED", "DEAD"]);
 const POLL_INTERVAL_MS = 1000;
 
 interface CallResponse {
@@ -29,6 +31,19 @@ interface CallEventResponse {
   createdAt: string;
 }
 
+interface WebhookOutboxEntryResponse {
+  id: string;
+  callSid: string;
+  webhookEndpointId: string;
+  eventType: string;
+  status: string;
+  retryCount: number;
+  maxRetries: number;
+  nextRetryAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   if (status === "COMPLETED") return "default";
   if (["FAILED", "NO_ANSWER", "BUSY", "CALL_DROPPED"].includes(status)) return "destructive";
@@ -39,17 +54,34 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
 export function CallDetailClient({
   initialCall,
   initialEvents,
+  initialWebhookDeliveries,
 }: {
   initialCall: CallResponse;
   initialEvents: CallEventResponse[];
+  initialWebhookDeliveries: WebhookOutboxEntryResponse[];
 }) {
   const [call, setCall] = useState(initialCall);
   const [events, setEvents] = useState(initialEvents);
+  const [webhookDeliveries, setWebhookDeliveries] = useState(initialWebhookDeliveries);
+  const [replayingId, setReplayingId] = useState<string | undefined>(undefined);
   const callSid = initialCall.callSid;
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
+  const callIsTerminal = TERMINAL_STATUSES.has(call.status);
+  // An empty array is vacuously "every entry is terminal" — that's wrong here: a call can go
+  // terminal before its webhook outbox rows exist yet (enqueueWebhooksForCall runs in the
+  // call-executor's finally block, strictly after the status write). Only treat deliveries as
+  // settled once there's at least one to look at.
+  const deliveriesAreTerminal =
+    webhookDeliveries.length > 0 && webhookDeliveries.every((d) => TERMINAL_WEBHOOK_STATUSES.has(d.status));
+  // Bounds how long we'll keep polling a terminal call with zero delivery rows — otherwise a call
+  // with no subscribed webhook endpoints at all would poll forever, since deliveriesAreTerminal
+  // can never become true for a call that will never get any outbox rows.
+  const noDeliveriesGraceTicksRef = useRef(0);
+
   useEffect(() => {
-    if (TERMINAL_STATUSES.has(call.status)) return;
+    if (callIsTerminal && deliveriesAreTerminal) return;
+    if (callIsTerminal && webhookDeliveries.length === 0 && noDeliveriesGraceTicksRef.current >= 10) return;
 
     let pollInFlight = false;
 
@@ -60,12 +92,26 @@ export function CallDetailClient({
       if (pollInFlight) return;
       pollInFlight = true;
       try {
-        const [callRes, eventsRes] = await Promise.all([
+        const [callRes, eventsRes, webhooksRes] = await Promise.all([
           fetch(`/api/calls/${callSid}`),
           fetch(`/api/calls/${callSid}/events?limit=100`),
+          fetch(`/api/webhook-outbox?callSid=${callSid}`),
         ]);
         if (callRes.ok) setCall(await callRes.json());
         if (eventsRes.ok) setEvents((await eventsRes.json()).events);
+        if (webhooksRes.ok) {
+          const { entries } = (await webhooksRes.json()) as { entries: WebhookOutboxEntryResponse[] };
+          setWebhookDeliveries(entries);
+          noDeliveriesGraceTicksRef.current = entries.length === 0 ? noDeliveriesGraceTicksRef.current + 1 : 0;
+
+          // A running interval keeps firing on its own schedule regardless of what a *future*
+          // effect re-run would decide — re-checking the grace condition only in the effect body
+          // would never actually stop this already-armed interval, since callIsTerminal and
+          // deliveries-empty can both stay constant forever. Self-terminate here instead.
+          if (callIsTerminal && entries.length === 0 && noDeliveriesGraceTicksRef.current >= 10) {
+            clearInterval(intervalRef.current);
+          }
+        }
       } catch {
         // A transient network error shouldn't crash the poller — just skip this tick and retry
         // on the next one rather than throwing an unhandled rejection every second.
@@ -76,8 +122,20 @@ export function CallDetailClient({
 
     intervalRef.current = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(intervalRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-arm only when the status class changes
-  }, [callSid, TERMINAL_STATUSES.has(call.status)]);
+  }, [callSid, callIsTerminal, deliveriesAreTerminal, webhookDeliveries.length]);
+
+  async function handleReplay(id: string) {
+    setReplayingId(id);
+    try {
+      const response = await fetch(`/api/webhook-outbox/${id}/replay`, { method: "POST" });
+      if (response.ok) {
+        const updated = await response.json();
+        setWebhookDeliveries((prev) => prev.map((d) => (d.id === id ? updated : d)));
+      }
+    } finally {
+      setReplayingId(undefined);
+    }
+  }
 
   const transcriptTurns = events
     .filter((e) => e.eventType === "transcript_turn")
@@ -151,6 +209,46 @@ export function CallDetailClient({
           </ol>
         </CardContent>
       </Card>
+
+      {webhookDeliveries.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Webhook deliveries</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="flex flex-col gap-2 text-sm" data-testid="webhook-deliveries">
+              {webhookDeliveries.map((delivery) => (
+                <li
+                  key={delivery.id}
+                  data-testid={`webhook-delivery-${delivery.id}`}
+                  className="flex items-center gap-3"
+                >
+                  <Badge
+                    data-testid={`webhook-delivery-status-${delivery.id}`}
+                    variant={delivery.status === "DELIVERED" ? "default" : delivery.status === "DEAD" ? "destructive" : "secondary"}
+                  >
+                    {delivery.status}
+                  </Badge>
+                  <span className="text-muted-foreground text-xs">
+                    {delivery.eventType} · attempt {delivery.retryCount}/{delivery.maxRetries}
+                  </span>
+                  {(delivery.status === "DEAD" || delivery.status === "DELIVERED") && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={replayingId === delivery.id}
+                      onClick={() => handleReplay(delivery.id)}
+                      data-testid={`webhook-replay-${delivery.id}`}
+                    >
+                      {replayingId === delivery.id ? "Replaying..." : "Replay"}
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </CardContent>
+        </Card>
+      )}
 
       <Accordion data-testid="raw-events-accordion">
         <AccordionItem value="raw-events">

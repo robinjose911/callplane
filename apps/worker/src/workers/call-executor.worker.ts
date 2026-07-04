@@ -3,16 +3,35 @@ import {
   TERMINAL_CALL_STATUSES,
   type CallExecutorJobData,
   type CallStatus,
+  type WebhookDispatcherJobData,
 } from "@callplane/contracts";
-import { createCallEventRepository, createCallRepository, createSipTrunkRepository, prisma, STUB_SCENARIOS } from "@callplane/database";
+import {
+  createCallEventRepository,
+  createCallRepository,
+  createSipTrunkRepository,
+  createWebhookEndpointRepository,
+  createWebhookOutboxRepository,
+  prisma,
+  STUB_SCENARIOS,
+} from "@callplane/database";
 import type { Worker } from "bullmq";
-import { createChildLogger, createWorker, buildCallRunner, type CallRunner } from "@callplane/voice-core";
+import {
+  createChildLogger,
+  createQueue,
+  createWorker,
+  buildCallRunner,
+  enqueueWebhooksForCall,
+  type CallRunner,
+} from "@callplane/voice-core";
 
 const logger = createChildLogger({ worker: "callExecutor" });
 
 const callRepo = createCallRepository(prisma);
 const callEventRepo = createCallEventRepository(prisma);
 const sipTrunkRepo = createSipTrunkRepository(prisma);
+const webhookEndpointRepo = createWebhookEndpointRepository(prisma);
+const webhookOutboxRepo = createWebhookOutboxRepository(prisma);
+const webhookDispatcherQueue = createQueue<WebhookDispatcherJobData>("webhook-dispatcher");
 
 export class IllegalTransitionError extends Error {
   constructor(from: CallStatus, to: CallStatus) {
@@ -70,8 +89,28 @@ export async function processCallExecutorJob(
     });
     if (isValidStatusTransition(currentStatus, "FAILED")) {
       await callRepo.updateStatus(call.callSid, "FAILED");
+      currentStatus = "FAILED";
     }
     throw error;
+  } finally {
+    // Runs whether the runner succeeded or threw — a FAILED call needs its
+    // call_initiation_failure webhook exactly as much as a COMPLETED one needs its
+    // post_call_transcription webhook. enqueueWebhooksForCall no-ops for a non-terminal status.
+    if ((TERMINAL_CALL_STATUSES as readonly CallStatus[]).includes(currentStatus)) {
+      const [finalCall, events] = await Promise.all([
+        callRepo.findBySid(call.callSid),
+        callEventRepo.findBySid(call.callSid),
+      ]);
+      if (finalCall) {
+        await enqueueWebhooksForCall(finalCall, events, {
+          webhookEndpointRepo,
+          webhookOutboxRepo,
+          webhookDispatcherQueue,
+        }).catch((err: unknown) => {
+          logger.error({ callSid: call.callSid, err }, "call-executor: failed to enqueue webhooks");
+        });
+      }
+    }
   }
 }
 

@@ -22,6 +22,19 @@ interface CallEventResponse {
   createdAt: string;
 }
 
+interface WebhookOutboxEntryResponse {
+  id: string;
+  callSid: string;
+  webhookEndpointId: string;
+  eventType: string;
+  status: string;
+  retryCount: number;
+  maxRetries: number;
+  nextRetryAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 async function fetchCall(callSid: string): Promise<CallResponse | undefined> {
   const response = await apiFetch(`/v1/calls/${callSid}`);
   if (!response.ok) return undefined;
@@ -35,9 +48,20 @@ async function fetchEvents(callSid: string): Promise<CallEventResponse[]> {
   return body.events;
 }
 
+async function fetchWebhookDeliveries(callSid: string): Promise<WebhookOutboxEntryResponse[]> {
+  const response = await apiFetch(`/v1/webhook-outbox?callSid=${callSid}`);
+  if (!response.ok) return [];
+  const body = (await response.json()) as { entries: WebhookOutboxEntryResponse[] };
+  return body.entries;
+}
+
 export default async function CallDetailPage({ params }: { params: Promise<{ callSid: string }> }) {
   const { callSid } = await params;
-  const [call, events] = await Promise.all([fetchCall(callSid), fetchEvents(callSid)]);
+  const [call, events, webhookDeliveries] = await Promise.all([
+    fetchCall(callSid),
+    fetchEvents(callSid),
+    fetchWebhookDeliveries(callSid),
+  ]);
 
   if (!call) {
     notFound();
@@ -48,7 +72,7 @@ export default async function CallDetailPage({ params }: { params: Promise<{ cal
       <h1 className="text-2xl font-semibold tracking-tight">
         Call <span className="font-mono text-lg">{call.callSid.slice(0, 8)}</span>
       </h1>
-      <CallDetailClient initialCall={call} initialEvents={events} />
+      <CallDetailClient initialCall={call} initialEvents={events} initialWebhookDeliveries={webhookDeliveries} />
     </div>
   );
 }

@@ -64,3 +64,7 @@ export {
   type TrunkRedisClient,
 } from "./lib/trunk-selector.js";
 export { buildCallRunner, type BuildCallRunnerDeps } from "./lib/build-call-runner.js";
+export { signWebhookPayload } from "./lib/webhook-signer.js";
+export { extractTranscript } from "./lib/transcript-extractor.js";
+export { mapCallOutcomeToWebhookPayload } from "./lib/outcome-mapper.js";
+export { enqueueWebhooksForCall, type WebhookEnqueueDeps } from "./lib/webhook-enqueue.js";

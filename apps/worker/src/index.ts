@@ -2,6 +2,7 @@ import "./bootstrap.js";
 import { createHealthApp } from "./health-app.js";
 import { logger } from "@callplane/voice-core";
 import { startCallExecutorWorker } from "./workers/call-executor.worker.js";
+import { startWebhookDispatcherWorker } from "./workers/webhook-dispatcher.worker.js";
 
 const healthPort = Number(process.env["WORKER_HEALTH_PORT"] ?? 4301);
 
@@ -16,3 +17,9 @@ callExecutorWorker.on("failed", (job, error) => {
   logger.error({ callSid: job?.data?.callSid, err: error }, "call-executor job failed");
 });
 logger.info("call-executor worker started");
+
+const webhookDispatcherWorker = startWebhookDispatcherWorker();
+webhookDispatcherWorker.on("failed", (job, error) => {
+  logger.error({ webhookOutboxId: job?.data?.webhookOutboxId, err: error }, "webhook-dispatcher job failed");
+});
+logger.info("webhook-dispatcher worker started");

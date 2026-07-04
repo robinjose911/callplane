@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WEBHOOK_EVENT_TYPES } from "./webhooks.js";
 
 /** Public voice-mode names (D6/D1 — not the source project's internal `semi_cascade`/`realtime_s2s`). */
 export const VoiceModeSchema = z.enum(["cascade", "half_cascade", "realtime"]);
@@ -177,3 +178,69 @@ export const CreateVoiceModelOptionBodySchema = z.object({
 });
 
 export type CreateVoiceModelOptionBody = z.infer<typeof CreateVoiceModelOptionBodySchema>;
+
+const WebhookEventTypeSchema = z.enum(WEBHOOK_EVENT_TYPES);
+
+/**
+ * Blocks cloud metadata endpoints (AWS/GCP/Azure all serve instance credentials from the
+ * link-local range `169.254.0.0/16`) — the one class of webhook-URL SSRF target with no
+ * legitimate use case in this stack. Deliberately does NOT block `localhost`/private IPs: this
+ * is a local-first demo stack whose whole point is that a webhook "customer endpoint" is
+ * typically the owner's own machine (the e2e webhook receiver, `examples/webhook-receiver/`, or
+ * a teammate's laptop during a demo) — a blanket loopback/private-range ban would break that
+ * core use case for a security property this v1 doesn't otherwise claim to provide.
+ */
+function isNotMetadataUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname !== "169.254.169.254" && !hostname.startsWith("169.254.");
+  } catch {
+    return true; // an unparseable URL is caught by .url() separately
+  }
+}
+
+const METADATA_URL_MESSAGE = "URL must not point at a cloud metadata endpoint (169.254.0.0/16)";
+
+/** Outbound webhook target. `secret` is never returned on a read path — always `"****"`. */
+export const WebhookEndpointSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  url: z.string().url(),
+  secret: z.string(),
+  isEnabled: z.boolean(),
+  eventTypes: z.array(WebhookEventTypeSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type WebhookEndpointResponse = z.infer<typeof WebhookEndpointSchema>;
+
+export const CreateWebhookEndpointBodySchema = z.object({
+  name: z.string().min(1),
+  url: z.string().url().refine(isNotMetadataUrl, METADATA_URL_MESSAGE),
+  secret: z.string().min(1),
+  isEnabled: z.boolean().optional(),
+  eventTypes: z.array(WebhookEventTypeSchema).min(1, "Select at least one event type"),
+});
+
+export type CreateWebhookEndpointBody = z.infer<typeof CreateWebhookEndpointBodySchema>;
+
+export const UpdateWebhookEndpointBodySchema = CreateWebhookEndpointBodySchema.omit({ name: true }).partial();
+
+export type UpdateWebhookEndpointBody = z.infer<typeof UpdateWebhookEndpointBodySchema>;
+
+/** A single webhook delivery-attempt row — the console's delivery log / replay UI. */
+export const WebhookOutboxEntrySchema = z.object({
+  id: z.string(),
+  callSid: z.string(),
+  webhookEndpointId: z.string(),
+  eventType: WebhookEventTypeSchema,
+  status: z.enum(["PENDING", "DELIVERED", "RETRY_PENDING", "FAILED", "DEAD"]),
+  retryCount: z.number().int().min(0),
+  maxRetries: z.number().int().positive(),
+  nextRetryAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type WebhookOutboxEntryResponse = z.infer<typeof WebhookOutboxEntrySchema>;

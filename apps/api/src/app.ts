@@ -1,11 +1,13 @@
 import express, { type Express } from "express";
 import type { Queue } from "bullmq";
-import type { CallExecutorJobData } from "@callplane/contracts";
+import type { CallExecutorJobData, WebhookDispatcherJobData } from "@callplane/contracts";
 import {
   createAgentConfigRepository,
   createCallEventRepository,
   createCallRepository,
   createSipTrunkRepository,
+  createWebhookEndpointRepository,
+  createWebhookOutboxRepository,
   prisma,
   type SipTrunkRepository,
 } from "@callplane/database";
@@ -16,6 +18,7 @@ import { modelOptionsRouter } from "./routes/model-options.js";
 import { languageProfilesRouter } from "./routes/language-profiles.js";
 import { createCallsRouter, type CallsRouterDeps } from "./routes/calls.js";
 import { createTrunksRouter } from "./routes/trunks.js";
+import { createWebhooksRouter } from "./routes/webhooks.js";
 import { errorHandler } from "./middleware/error-handler.js";
 
 export interface CreateAppOverrides {
@@ -24,10 +27,12 @@ export interface CreateAppOverrides {
   callEventRepo?: CallsRouterDeps["callEventRepo"];
   /** A resolved queue instance (e.g. a mock) — bypasses the lazy real-Redis default entirely. */
   callExecutorQueue?: Queue<CallExecutorJobData>;
+  webhookDispatcherQueue?: Queue<WebhookDispatcherJobData>;
   sipTrunkRepo?: SipTrunkRepository;
 }
 
 let defaultCallExecutorQueue: Queue<CallExecutorJobData> | undefined;
+let defaultWebhookDispatcherQueue: Queue<WebhookDispatcherJobData> | undefined;
 
 /**
  * Constructed lazily so routes/tests that never POST /v1/calls (health, agents) never open a
@@ -37,6 +42,12 @@ let defaultCallExecutorQueue: Queue<CallExecutorJobData> | undefined;
 function getDefaultCallExecutorQueue(): Queue<CallExecutorJobData> {
   defaultCallExecutorQueue ??= createQueue<CallExecutorJobData>("call-executor");
   return defaultCallExecutorQueue;
+}
+
+/** Same lazy-construction reasoning as the call-executor queue above, for the replay route. */
+function getDefaultWebhookDispatcherQueue(): Queue<WebhookDispatcherJobData> {
+  defaultWebhookDispatcherQueue ??= createQueue<WebhookDispatcherJobData>("webhook-dispatcher");
+  return defaultWebhookDispatcherQueue;
 }
 
 export function createApp(overrides?: CreateAppOverrides): Express {
@@ -55,6 +66,13 @@ export function createApp(overrides?: CreateAppOverrides): Express {
     }),
   );
   app.use(createTrunksRouter(overrides?.sipTrunkRepo ?? createSipTrunkRepository(prisma)));
+  app.use(
+    createWebhooksRouter({
+      webhookEndpointRepo: createWebhookEndpointRepository(prisma),
+      webhookOutboxRepo: createWebhookOutboxRepository(prisma),
+      getWebhookDispatcherQueue: () => overrides?.webhookDispatcherQueue ?? getDefaultWebhookDispatcherQueue(),
+    }),
+  );
   app.use(errorHandler);
   return app;
 }

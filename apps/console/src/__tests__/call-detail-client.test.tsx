@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { CallDetailClient } from "@/app/(shell)/calls/[callSid]/call-detail-client";
 
 function call(overrides: Partial<Record<string, unknown>> = {}) {
@@ -21,6 +22,22 @@ function event(eventType: string, payload: Record<string, unknown> | null = null
   return { id, callSid: "call-1", eventType, payload, createdAt: "2026-07-04T00:00:01.000Z" };
 }
 
+function delivery(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "delivery-1",
+    callSid: "call-1",
+    webhookEndpointId: "endpoint-1",
+    eventType: "post_call_transcription",
+    status: "DEAD",
+    retryCount: 10,
+    maxRetries: 10,
+    nextRetryAt: null,
+    createdAt: "2026-07-04T00:00:00.000Z",
+    updatedAt: "2026-07-04T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 describe("CallDetailClient", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -29,7 +46,7 @@ describe("CallDetailClient", () => {
 
   it("renders the timeline events in the order given", () => {
     const events = [event("call_queued"), event("call_dialing"), event("call_in_progress")];
-    render(<CallDetailClient initialCall={call()} initialEvents={events} />);
+    render(<CallDetailClient initialCall={call()} initialEvents={events} initialWebhookDeliveries={[]} />);
 
     const items = screen.getAllByTestId(/^timeline-event-/);
     expect(items.map((el) => el.dataset["testid"])).toEqual([
@@ -44,7 +61,7 @@ describe("CallDetailClient", () => {
       event("transcript_turn", { role: "agent", text: "Hi there" }, "t1"),
       event("transcript_turn", { role: "user", text: "Hello" }, "t2"),
     ];
-    render(<CallDetailClient initialCall={call()} initialEvents={events} />);
+    render(<CallDetailClient initialCall={call()} initialEvents={events} initialWebhookDeliveries={[]} />);
 
     expect(screen.getByTestId("call-turn-0")).toHaveTextContent("agent: Hi there");
     expect(screen.getByTestId("call-turn-1")).toHaveTextContent("user: Hello");
@@ -54,11 +71,12 @@ describe("CallDetailClient", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+      if (url.includes("/webhook-outbox")) return Promise.resolve({ ok: true, json: async () => ({ entries: [] }) });
       return Promise.resolve({ ok: true, json: async () => call({ status: "IN_PROGRESS" }) });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} />);
+    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} initialWebhookDeliveries={[]} />);
     expect(screen.getByTestId("live-indicator")).toBeInTheDocument();
 
     await act(() => vi.advanceTimersByTimeAsync(1000));
@@ -66,29 +84,44 @@ describe("CallDetailClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/calls/call-1/events?limit=100");
   });
 
-  it("does not poll and hides the live indicator for a terminal call", async () => {
+  it("does not poll and hides the live indicator for a terminal call whose webhook deliveries are already settled", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CallDetailClient initialCall={call({ status: "COMPLETED" })} initialEvents={[]} />);
+    render(
+      <CallDetailClient
+        initialCall={call({ status: "COMPLETED" })}
+        initialEvents={[]}
+        initialWebhookDeliveries={[delivery({ status: "DELIVERED" })]}
+      />,
+    );
     expect(screen.queryByTestId("live-indicator")).not.toBeInTheDocument();
 
     await act(() => vi.advanceTimersByTimeAsync(3000));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("stops polling once a poll response reports a terminal status", async () => {
+  it("stops polling once a poll response reports a terminal call status with settled deliveries", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let pollCount = 0;
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+      if (url.includes("/webhook-outbox")) {
+        return Promise.resolve({ ok: true, json: async () => ({ entries: [delivery({ status: "DELIVERED" })] }) });
+      }
       pollCount += 1;
       return Promise.resolve({ ok: true, json: async () => call({ status: "COMPLETED" }) });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} />);
+    render(
+      <CallDetailClient
+        initialCall={call({ status: "IN_PROGRESS" })}
+        initialEvents={[]}
+        initialWebhookDeliveries={[delivery({ status: "PENDING" })]}
+      />,
+    );
 
     await act(() => vi.advanceTimersByTimeAsync(1000));
     await waitFor(() => expect(screen.getByTestId("call-detail-status")).toHaveTextContent("COMPLETED"));
@@ -98,6 +131,33 @@ describe("CallDetailClient", () => {
     expect(pollCount).toBe(countAfterFirstPoll);
   });
 
+  it("keeps polling a terminal call for a bounded grace period when it has zero webhook deliveries yet, then gives up", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+      if (url.includes("/webhook-outbox")) return Promise.resolve({ ok: true, json: async () => ({ entries: [] }) });
+      return Promise.resolve({ ok: true, json: async () => call({ status: "COMPLETED" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <CallDetailClient initialCall={call({ status: "COMPLETED" })} initialEvents={[]} initialWebhookDeliveries={[]} />,
+    );
+
+    // Still within the grace period (5 of the 10 allotted ticks) — polling continues even though
+    // the call is already terminal, since deliveries genuinely might still be about to appear.
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(fetchMock).toHaveBeenCalled();
+
+    // Advance well past the 10-tick grace window (deliveries stay empty throughout) — polling
+    // should stabilize instead of continuing forever.
+    await act(() => vi.advanceTimersByTimeAsync(20000));
+    const callCountAfterGraceExpires = fetchMock.mock.calls.length;
+
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(fetchMock.mock.calls.length).toBe(callCountAfterGraceExpires);
+  });
+
   it("skips a tick rather than overlapping when the previous poll is still in flight", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let pollStarts = 0;
@@ -105,6 +165,7 @@ describe("CallDetailClient", () => {
 
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+      if (url.includes("/webhook-outbox")) return Promise.resolve({ ok: true, json: async () => ({ entries: [] }) });
       pollStarts += 1;
       if (pollStarts === 1) {
         // First tick's /api/calls/:callSid fetch never resolves until we say so — simulates a
@@ -117,7 +178,7 @@ describe("CallDetailClient", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} />);
+    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} initialWebhookDeliveries={[]} />);
 
     await act(() => vi.advanceTimersByTimeAsync(1000)); // tick 1 starts, hangs
     await act(() => vi.advanceTimersByTimeAsync(1000)); // tick 2 fires while tick 1 is still in flight
@@ -134,17 +195,91 @@ describe("CallDetailClient", () => {
     let attempt = 0;
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+      if (url.includes("/webhook-outbox")) return Promise.resolve({ ok: true, json: async () => ({ entries: [] }) });
       attempt += 1;
       if (attempt === 1) return Promise.reject(new Error("network error"));
       return Promise.resolve({ ok: true, json: async () => call({ status: "IN_PROGRESS" }) });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} />);
+    render(<CallDetailClient initialCall={call({ status: "IN_PROGRESS" })} initialEvents={[]} initialWebhookDeliveries={[]} />);
 
     await act(() => vi.advanceTimersByTimeAsync(1000));
     await act(() => vi.advanceTimersByTimeAsync(1000));
     expect(attempt).toBe(2);
     expect(screen.getByTestId("live-indicator")).toBeInTheDocument();
+  });
+
+  it("renders webhook delivery status badges", () => {
+    render(
+      <CallDetailClient
+        initialCall={call({ status: "COMPLETED" })}
+        initialEvents={[]}
+        initialWebhookDeliveries={[delivery({ status: "DEAD" })]}
+      />,
+    );
+    expect(screen.getByTestId("webhook-delivery-status-delivery-1")).toHaveTextContent("DEAD");
+  });
+
+  it("shows a Replay button for a DEAD delivery but not for a PENDING one", () => {
+    const { unmount } = render(
+      <CallDetailClient
+        initialCall={call({ status: "COMPLETED" })}
+        initialEvents={[]}
+        initialWebhookDeliveries={[delivery({ status: "DEAD" })]}
+      />,
+    );
+    expect(screen.getByTestId("webhook-replay-delivery-1")).toBeInTheDocument();
+    unmount();
+
+    render(
+      <CallDetailClient
+        initialCall={call({ status: "COMPLETED" })}
+        initialEvents={[]}
+        initialWebhookDeliveries={[delivery({ status: "PENDING" })]}
+      />,
+    );
+    expect(screen.queryByTestId("webhook-replay-delivery-1")).not.toBeInTheDocument();
+  });
+
+  it("posts to the replay route and updates the row's status from the response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => delivery({ status: "PENDING", retryCount: 0 }) }),
+    );
+    const user = userEvent.setup();
+
+    render(
+      <CallDetailClient
+        initialCall={call({ status: "COMPLETED" })}
+        initialEvents={[]}
+        initialWebhookDeliveries={[delivery({ status: "DEAD" })]}
+      />,
+    );
+    await user.click(screen.getByTestId("webhook-replay-delivery-1"));
+
+    expect(fetch).toHaveBeenCalledWith("/api/webhook-outbox/delivery-1/replay", { method: "POST" });
+    expect(await screen.findByTestId("webhook-delivery-status-delivery-1")).toHaveTextContent("PENDING");
+  });
+
+  it("keeps polling while a webhook delivery is still non-terminal, even after the call itself is terminal", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/webhook-outbox")) return Promise.resolve({ ok: true, json: async () => ({ entries: [delivery({ status: "RETRY_PENDING" })] }) });
+      if (url.includes("/events")) return Promise.resolve({ ok: true, json: async () => ({ events: [] }) });
+      return Promise.resolve({ ok: true, json: async () => call({ status: "COMPLETED" }) });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <CallDetailClient
+        initialCall={call({ status: "COMPLETED" })}
+        initialEvents={[]}
+        initialWebhookDeliveries={[delivery({ status: "RETRY_PENDING" })]}
+      />,
+    );
+
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(fetchMock).toHaveBeenCalledWith("/api/webhook-outbox?callSid=call-1");
   });
 });

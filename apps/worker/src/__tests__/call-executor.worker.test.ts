@@ -30,6 +30,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // A completed/failed call now also enqueues a WebhookOutbox row (Stage 8) — must be deleted
+  // before the Call row it references, or the FK constraint blocks the Call/AgentConfig cleanup.
+  await prisma.webhookOutbox.deleteMany({ where: { callSid: { in: callSids } } });
   await prisma.callEvent.deleteMany({ where: { callSid: { in: callSids } } });
   await prisma.call.deleteMany({ where: { callSid: { in: callSids } } });
   await prisma.agentConfig.deleteMany({ where: { name: agentName } });
