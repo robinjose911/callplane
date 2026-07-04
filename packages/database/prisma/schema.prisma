@@ -1,0 +1,354 @@
+// callplane — Prisma Schema
+// Database: Postgres 17 (shared server; isolated by schema, not by port — see CLAUDE.md D7)
+// Schema: callplane
+//
+// Coding conventions:
+//   - Prisma model fields: camelCase
+//   - DB columns: snake_case via @map()
+//   - All models use UUID v4 as primary key (@default(uuid())), except AgentConfig/SipTrunk/
+//     WebhookEndpoint whose human-readable `name` is the field every other model + the API
+//     references (agentId, trunk name, endpoint name) — the UUID `id` is Prisma-internal only.
+//   - All models belong to @@schema("callplane")
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["callplane"]
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum VoiceMode {
+  /// Deepgram STT + LLM + ElevenLabs/Cartesia TTS
+  cascade
+  /// Realtime STT/LLM combo model + separate TTS
+  half_cascade
+  /// Native audio speech-to-speech: Gemini Live / OpenAI / Azure OpenAI Realtime
+  realtime
+
+  @@schema("callplane")
+}
+
+enum S2sProvider {
+  gemini
+  openai
+  azure
+
+  @@schema("callplane")
+}
+
+enum SttProvider {
+  deepgram
+
+  @@schema("callplane")
+}
+
+enum LlmProvider {
+  openai
+  google
+  azure
+
+  @@schema("callplane")
+}
+
+enum TtsProvider {
+  elevenlabs
+  cartesia
+
+  @@schema("callplane")
+}
+
+enum ReasoningEffort {
+  none
+  low
+  medium
+  high
+
+  @@schema("callplane")
+}
+
+enum Channel {
+  sip
+  browser
+
+  @@schema("callplane")
+}
+
+enum CallStatus {
+  QUEUED
+  DIALING
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  NO_ANSWER
+  BUSY
+  CALL_DROPPED
+
+  @@schema("callplane")
+}
+
+enum SipTrunkProvider {
+  telnyx
+  twilio
+  generic
+
+  @@schema("callplane")
+}
+
+enum ProviderType {
+  s2s
+  stt
+  llm
+  tts
+
+  @@schema("callplane")
+}
+
+enum ProviderPriority {
+  primary
+  secondary
+
+  @@schema("callplane")
+}
+
+enum WebhookEventType {
+  call_initiation_failure
+  post_call_transcription
+
+  @@schema("callplane")
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  DELIVERED
+  RETRY_PENDING
+  FAILED
+  DEAD
+
+  @@schema("callplane")
+}
+
+// ─── Config Tables ───────────────────────────────────────────────────────────
+
+/// Every field here is D6-configurable (Postgres row, editable in the console). Which
+/// provider/model fields are meaningful depends on voiceMode (see AgentConfigSchema doc comment
+/// in @callplane/contracts).
+model AgentConfig {
+  id                String           @id @default(uuid())
+  /// Human-readable identifier used everywhere else as "agentId" (POST /v1/calls, seed fixtures).
+  name              String           @unique
+  voiceMode         VoiceMode        @map("voice_mode")
+  s2sProvider       S2sProvider?     @map("s2s_provider")
+  s2sModel          String?          @map("s2s_model")
+  sttProvider       SttProvider?     @map("stt_provider")
+  llmProvider       LlmProvider?     @map("llm_provider")
+  llmModel          String?          @map("llm_model")
+  ttsProvider       TtsProvider?     @map("tts_provider")
+  ttsVoiceId        String?          @map("tts_voice_id")
+  reasoningEffort   ReasoningEffort? @map("reasoning_effort")
+  prompt            String
+  languageProfileId String?          @map("language_profile_id")
+  isActive          Boolean          @default(true) @map("is_active")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  languageProfile LanguageProfile? @relation(fields: [languageProfileId], references: [id])
+  calls           Call[]
+
+  @@map("agent_configs")
+  @@schema("callplane")
+}
+
+/// SIP trunk registry (D9). Trunk selected at job-execution time, not API time.
+model SipTrunk {
+  id                 String           @id @default(uuid())
+  name               String           @unique
+  provider           SipTrunkProvider
+  livekitTrunkId     String           @map("livekit_trunk_id")
+  /// Logical reference name for credentials (env var name or secret ID) — never the raw secret.
+  credentialsRef     String           @map("credentials_ref")
+  maxConcurrentCalls Int              @default(5) @map("max_concurrent_calls")
+  weight             Int              @default(100)
+  isActive           Boolean          @default(false) @map("is_active")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  @@map("sip_trunks")
+  @@schema("callplane")
+}
+
+/// LLM/STT/TTS/S2S provider configurations with priority ordering for call-init failover.
+model ProviderProfile {
+  id             String           @id @default(uuid())
+  providerType   ProviderType     @map("provider_type")
+  name           String
+  priority       ProviderPriority
+  credentialsRef String           @map("credentials_ref")
+  isActive       Boolean          @default(true) @map("is_active")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  @@map("provider_profiles")
+  @@schema("callplane")
+}
+
+/// Language-specific prompt prefix and voice/STT defaults.
+model LanguageProfile {
+  id                     String   @id @default(uuid())
+  /// BCP-47 language code (e.g. "en-US", "de-DE", "fr-FR").
+  languageCode           String   @unique @map("language_code")
+  systemPromptPrefix     String   @map("system_prompt_prefix")
+  defaultTtsVoiceId      String?  @map("default_tts_voice_id")
+  defaultSttLanguageCode String?  @map("default_stt_language_code")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  agentConfigs AgentConfig[]
+
+  @@map("language_profiles")
+  @@schema("callplane")
+}
+
+/// Outbound webhook targets (D6: DB config, not env — a customer's endpoint + secret).
+model WebhookEndpoint {
+  id         String             @id @default(uuid())
+  name       String             @unique
+  url        String
+  /// HMAC secret for the ElevenLabs-Signature header (D3). Never returned on read paths.
+  secret     String
+  isEnabled  Boolean            @default(false) @map("is_enabled")
+  eventTypes WebhookEventType[] @map("event_types")
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+
+  outbox WebhookOutbox[]
+
+  @@map("webhook_endpoints")
+  @@schema("callplane")
+}
+
+/// Per-provider unit prices (D6: console-editable, not hardcoded).
+model PriceTable {
+  id           String   @id @default(uuid())
+  provider     String
+  providerType String   @map("provider_type")
+  /// tokens | seconds | characters | minutes
+  unitType     String   @map("unit_type")
+  pricePerUnit Decimal  @map("price_per_unit") @db.Decimal(18, 6)
+  currency     String   @default("USD")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([provider, providerType, unitType])
+  @@map("price_table")
+  @@schema("callplane")
+}
+
+// ─── Call Tables ─────────────────────────────────────────────────────────────
+
+/// One row per initiated call — sip or browser channel, both first-class (a browser call is
+/// not a second system, per Stage 6's design).
+model Call {
+  id               String     @id @default(uuid())
+  /// UUID v4 returned immediately in the 200 response (API-time, before any dial/room activity).
+  callSid          String     @unique @map("call_sid")
+  agentId          String     @map("agent_id")
+  channel          Channel
+  toNumber         String?    @map("to_number")
+  status           CallStatus @default(QUEUED)
+  /// Stub scenario name — stub-mode only, rejected by the API when stubs are off.
+  scenario         String?
+  dynamicVariables Json?      @map("dynamic_variables")
+  /// 60s idempotency window key: "<agentId>:<toNumber>", cleared on terminal status.
+  idempotencyKey   String?    @unique @map("idempotency_key")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+
+  agentConfig   AgentConfig     @relation(fields: [agentId], references: [name])
+  events        CallEvent[]
+  costs         CallCost[]
+  recording     Recording?
+  webhookOutbox WebhookOutbox[]
+
+  @@map("calls")
+  @@schema("callplane")
+}
+
+/// Append-only lifecycle event stream per call. Never updated, never deleted.
+model CallEvent {
+  id        String   @id @default(uuid())
+  callSid   String   @map("call_sid")
+  /// Extensible event type string: call_queued, trunk_selected, sip_dial_initiated,
+  /// agent_joined, transcript_turn, call_completed, call_failed, failover_triggered, ...
+  eventType String   @map("event_type")
+  payload   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  call Call @relation(fields: [callSid], references: [callSid])
+
+  @@map("call_events")
+  @@schema("callplane")
+}
+
+/// Per-provider-leg cost breakdown for a single call.
+model CallCost {
+  id           String   @id @default(uuid())
+  callSid      String   @map("call_sid")
+  /// Provider name (e.g. "gemini-live", "deepgram", "elevenlabs", "telnyx").
+  provider     String
+  providerType String   @map("provider_type")
+  /// Quantity consumed (tokens, seconds, characters, minutes).
+  units        Decimal  @db.Decimal(18, 6)
+  unitType     String   @map("unit_type")
+  costAmount   Decimal  @map("cost_amount") @db.Decimal(18, 6)
+  currency     String   @default("USD")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  call Call @relation(fields: [callSid], references: [callSid])
+
+  @@map("call_costs")
+  @@schema("callplane")
+}
+
+/// Recording artifact metadata — the file itself lives behind StorageAdapter (Stage 9).
+model Recording {
+  id              String   @id @default(uuid())
+  callSid         String   @unique @map("call_sid")
+  storagePath     String   @map("storage_path")
+  durationSeconds Int?     @map("duration_seconds")
+  sizeBytes       BigInt?  @map("size_bytes")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  call Call @relation(fields: [callSid], references: [callSid])
+
+  @@map("recordings")
+  @@schema("callplane")
+}
+
+/// Transactional outbox for webhook delivery. One row per (call, endpoint, event type).
+model WebhookOutbox {
+  id                String                @id @default(uuid())
+  callSid           String                @map("call_sid")
+  webhookEndpointId String                @map("webhook_endpoint_id")
+  eventType         WebhookEventType      @map("event_type")
+  payload           Json
+  status            WebhookDeliveryStatus @default(PENDING)
+  retryCount        Int                   @default(0) @map("retry_count")
+  maxRetries        Int                   @default(10) @map("max_retries")
+  nextRetryAt       DateTime?             @map("next_retry_at")
+  /// Format "<callSid>:<eventType>" — prevents duplicate outbox rows (see buildWebhookIdempotencyKey).
+  idempotencyKey    String                @unique @map("idempotency_key")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  call            Call            @relation(fields: [callSid], references: [callSid])
+  webhookEndpoint WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id])
+
+  @@map("webhook_outbox")
+  @@schema("callplane")
+}
