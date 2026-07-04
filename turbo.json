@@ -1,5 +1,23 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "DATABASE_URL",
+    "REDIS_URL",
+    "LIVEKIT_URL",
+    "LIVEKIT_API_KEY",
+    "LIVEKIT_API_SECRET",
+    "PROVIDER_STUB_MODE",
+    "SIP_STUB_MODE",
+    "RECORDING_MODE",
+    "CALLPLANE_API_KEY",
+    "SERVICE_NAME",
+    "PORT",
+    "WORKER_HEALTH_PORT",
+    "API_BASE_URL",
+    "LOG_LEVEL",
+    "LOG_PRETTY",
+    "AGENT_LOG_FILE"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
