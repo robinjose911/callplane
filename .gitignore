@@ -1,0 +1,35 @@
+# Internal / not part of the public repo
+CLAUDE.md
+samples/
+
+# OS
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Env (secrets) — keep *.example files
+.env
+.env.*
+!.env.example
+!*.env.example
+
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+
+# Editor
+.vscode/
+.idea/
