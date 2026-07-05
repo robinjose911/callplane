@@ -5,8 +5,8 @@
 #   docker compose --profile full down
 #   docker compose --profile full down -v   # reset all data
 #
-# The owner's machine already runs Postgres on the default 5432 (shared with
-# another local service, isolated by schema `callplane`, not by port) — the `postgres`
+# The owner's machine already runs Postgres on the default 5432 (shared with another
+# local service, isolated by schema `callplane`, not by port) — the `postgres`
 # service here is for everyone else, on host port 5433 so it never collides.
 #
 # Ports and container names are env-var-driven (with these exact defaults) so

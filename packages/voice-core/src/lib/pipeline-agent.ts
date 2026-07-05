@@ -1,6 +1,5 @@
 /**
- * STT/LLM/TTS provider factories for `cascade` and `half_cascade` modes. Ported from the source project's
- * pipeline-agent.ts, genericized (mode names, no service-specific defaults).
+ * STT/LLM/TTS provider factories for `cascade` and `half_cascade` modes.
  */
 import * as cartesia from "@livekit/agents-plugin-cartesia";
 import * as deepgram from "@livekit/agents-plugin-deepgram";

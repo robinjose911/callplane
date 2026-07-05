@@ -3,7 +3,7 @@ import { Redis } from "ioredis";
 
 /**
  * Every callplane BullMQ Queue/Worker MUST be created through these factories — never call
- * `new Queue(...)`/`new Worker(...)` directly. Redis is shared with another local service locally,
+ * `new Queue(...)`/`new Worker(...)` directly. Redis is shared with another local service,
  * whose queues (`call-executor`, `webhook-dispatcher`) are unprefixed; without this hard-coded
  * prefix the two workers would steal each other's jobs on the same Redis instance. A convention
  * test (tests/no-raw-bullmq.test.ts) greps apps/ and packages/ for raw `new Queue(`/`new Worker(`
