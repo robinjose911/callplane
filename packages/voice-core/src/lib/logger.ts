@@ -1,6 +1,7 @@
 import pino from "pino";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { buildLogTransports } from "./build-log-transports.js";
 
 /**
  * Shared Pino logger for all callplane services.
@@ -10,6 +11,9 @@ import { dirname } from "node:path";
  *   LOG_LEVEL      — Override log level (default: "debug" in dev, "warn" in prod)
  *   LOG_PRETTY     — Set to "true" for human-readable output in local dev
  *   AGENT_LOG_FILE — File path for agent child-process logs (default: /tmp/callplane-agent.log)
+ *   AXIOM_TOKEN, AXIOM_DATASET — When both are set, logs are also shipped to Axiom via
+ *                  @axiomhq/pino (post-v1 — see build-log-transports.ts). Not mutually exclusive
+ *                  with LOG_PRETTY; both can be active at once via pino's multi-target transport.
  *
  * Child process logging:
  *   LiveKit's job workers fork() child processes whose stdout is piped and never read by
@@ -19,7 +23,6 @@ import { dirname } from "node:path";
  */
 
 const isProduction = process.env["NODE_ENV"] === "production";
-const isPretty = process.env["LOG_PRETTY"] === "true";
 
 /** Defined only in IPC-connected child processes (LiveKit's fork()ed job workers). */
 const isChildProcess = typeof process.send === "function";
@@ -35,20 +38,6 @@ const pinoOptions: pino.LoggerOptions = {
   timestamp: pino.stdTimeFunctions.isoTime,
 };
 
-function buildParentTransport(): pino.TransportSingleOptions | undefined {
-  if (isPretty) {
-    return {
-      target: "pino-pretty",
-      options: {
-        colorize: true,
-        translateTime: "SYS:HH:MM:ss",
-        ignore: "pid,hostname",
-      },
-    };
-  }
-  return undefined;
-}
-
 function buildLogger(): pino.Logger {
   if (isChildProcess) {
     mkdirSync(dirname(AGENT_LOG_FILE), { recursive: true });
@@ -56,7 +45,7 @@ function buildLogger(): pino.Logger {
     return pino(pinoOptions, dest);
   }
 
-  const transport = buildParentTransport();
+  const transport = buildLogTransports();
   return pino(pinoOptions, transport ? pino.transport(transport) : undefined);
 }
 
