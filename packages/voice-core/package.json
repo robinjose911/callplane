@@ -16,6 +16,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@azure/storage-blob": "^12.33.0",
     "@callplane/contracts": "*",
     "@callplane/database": "*",
     "@livekit/agents": "^1.5.0",

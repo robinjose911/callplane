@@ -72,5 +72,7 @@ export { meterCallUsage, type MeterCallUsageInput, type MeteredLeg } from "./lib
 export { meterCallCost, type MeterCallCostDeps } from "./lib/meter-call-cost.js";
 export { type StorageAdapter } from "./lib/storage-adapter.js";
 export { createLocalDiskAdapter } from "./lib/local-disk-adapter.js";
+export { createAzureBlobAdapter, createAzureBlobAdapterFromConnectionString } from "./lib/azure-blob-adapter.js";
+export { buildStorageAdapter } from "./lib/build-storage-adapter.js";
 export { generateStubWavBuffer } from "./lib/stub-wav.js";
 export { recordCallStub, type RecordCallStubDeps } from "./lib/record-call-stub.js";

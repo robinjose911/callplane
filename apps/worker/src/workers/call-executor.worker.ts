@@ -20,8 +20,8 @@ import {
 } from "@callplane/database";
 import type { Worker } from "bullmq";
 import {
+  buildStorageAdapter,
   createChildLogger,
-  createLocalDiskAdapter,
   createQueue,
   createWorker,
   buildCallRunner,
@@ -43,7 +43,7 @@ const agentConfigRepo = createAgentConfigRepository(prisma);
 const priceTableRepo = createPriceTableRepository(prisma);
 const callCostRepo = createCallCostRepository(prisma);
 const recordingRepo = createRecordingRepository(prisma);
-const storageAdapter = createLocalDiskAdapter(process.env["RECORDINGS_DIR"] ?? "./data/recordings");
+const storageAdapter = buildStorageAdapter();
 
 export class IllegalTransitionError extends Error {
   constructor(from: CallStatus, to: CallStatus) {

@@ -48,14 +48,26 @@ surface it there too.
 ## Recording
 
 `RECORDING_MODE=stub` writes a deterministic silent WAV file per completed call through a
-`StorageAdapter` abstraction (`packages/voice-core/src/lib/storage-adapter.ts`), currently backed
-by a `LocalDiskAdapter` that writes to `RECORDINGS_DIR` (default `/tmp/callplane-recordings` — set
-explicitly and identically in both `apps/api/.env` and `apps/worker/.env`, since each process
-resolves a relative default against its own working directory otherwise). The recording is
-streamed back through `GET /v1/calls/:callSid/recording` and played from an `<audio>` element on
-the call detail page. Cloud storage (Azure Blob, or LiveKit's own Cloud Egress for real
-provider audio) is tracked as post-v1 work — the `StorageAdapter` interface exists specifically so
-that's a drop-in adapter, not a rewrite.
+`StorageAdapter` abstraction (`packages/voice-core/src/lib/storage-adapter.ts`). Which
+implementation is used is picked by `buildStorageAdapter()` (`packages/voice-core/src/lib/
+build-storage-adapter.ts`) based on `STORAGE_ADAPTER`:
+
+- **`STORAGE_ADAPTER` unset or `local`** (the default) — a `LocalDiskAdapter` that writes to
+  `RECORDINGS_DIR` (default `/tmp/callplane-recordings` — set explicitly and identically in both
+  `apps/api/.env` and `apps/worker/.env`, since each process resolves a relative default against
+  its own working directory otherwise).
+- **`STORAGE_ADAPTER=azure-blob`** — an `AzureBlobAdapter` (`packages/voice-core/src/lib/
+  azure-blob-adapter.ts`), requiring `AZURE_STORAGE_CONNECTION_STRING` and
+  `AZURE_STORAGE_CONTAINER` to also be set (both in `apps/api/.env` and `apps/worker/.env`).
+  Unit-tested against a mocked `ContainerClient`, the same pattern used for every real AI provider
+  integration in this repo — there's no real-Azure-account integration test, matching how real
+  provider correctness is out of scope for this stack's automated test suite (see
+  [docs/providers.md](./providers.md)).
+
+Either way, the recording is streamed back through `GET /v1/calls/:callSid/recording` and played
+from an `<audio>` element on the call detail page — the route doesn't know or care which adapter
+produced the bytes. LiveKit's own Cloud Egress (for capturing *real* provider audio, not the stub's
+silent WAV) remains tracked as separate post-v1 work.
 
 ## Aggregates
 

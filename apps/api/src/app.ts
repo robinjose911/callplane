@@ -14,7 +14,7 @@ import {
   prisma,
   type SipTrunkRepository,
 } from "@callplane/database";
-import { createLocalDiskAdapter, createQueue, type StorageAdapter } from "@callplane/voice-core";
+import { buildStorageAdapter, createQueue, type StorageAdapter } from "@callplane/voice-core";
 import { healthRouter } from "./routes/health.js";
 import { agentsRouter } from "./routes/agents.js";
 import { modelOptionsRouter } from "./routes/model-options.js";
@@ -58,13 +58,13 @@ function getDefaultWebhookDispatcherQueue(): Queue<WebhookDispatcherJobData> {
 let defaultStorageAdapter: StorageAdapter | undefined;
 
 /**
- * Lazily constructed, and reads RECORDINGS_DIR at call time rather than at module load — a test
- * that sets process.env["RECORDINGS_DIR"] in beforeAll and then calls createApp() needs this to
- * see that value; a module-level `const` evaluated on import would have already baked in
+ * Lazily constructed, and reads env at call time rather than at module load — a test that sets
+ * process.env["RECORDINGS_DIR"]/["STORAGE_ADAPTER"] in beforeAll and then calls createApp() needs
+ * this to see that value; a module-level `const` evaluated on import would have already baked in
  * whatever was set (or unset) before the test file's imports ran.
  */
 function getDefaultStorageAdapter(): StorageAdapter {
-  defaultStorageAdapter ??= createLocalDiskAdapter(process.env["RECORDINGS_DIR"] ?? "./data/recordings");
+  defaultStorageAdapter ??= buildStorageAdapter();
   return defaultStorageAdapter;
 }
 
