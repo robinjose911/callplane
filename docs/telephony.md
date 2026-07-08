@@ -42,6 +42,5 @@ trunk mid-conversation. See [ADR 0002](./adr/0002-failover-at-init-only.md) for 
 3. Place an outbound call from the Playground or via `POST /v1/calls` with a real E.164 `toNumber`
    — LiveKit's SIP integration dials out through the configured trunk.
 
-This repo does not include LiveKit's direct-trunk (BYO-SIP-gateway) mode — see
-[Stage 11 in `PLAN.md`](../PLAN.md#stage-11-post-v1-recorded-not-built-here) for that and other
-post-v1 telephony work.
+This repo does not include LiveKit's direct-trunk (BYO-SIP-gateway) mode. That, along with other
+post-v1 telephony work, is recorded but not built here.
